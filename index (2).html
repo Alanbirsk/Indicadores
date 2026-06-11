@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Implantações Finalizadas vs Cancelamentos</title>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #f0f4f8; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { text-align: center; color: #1a365d; margin-bottom: 8px; }
+        .sub { text-align: center; color: #4a5568; margin-bottom: 30px; font-size: 14px; }
+        
+        .cards { display: flex; flex-wrap: wrap; justify-content: center; gap: 30px; margin-bottom: 40px; }
+        .card { background: white; border-radius: 24px; padding: 30px 40px; text-align: center; box-shadow: 0 8px 25px rgba(0,0,0,0.1); min-width: 250px; transition: transform 0.2s; }
+        .card:hover { transform: translateY(-5px); }
+        .card h3 { color: #4a5568; font-size: 16px; letter-spacing: 1px; margin-bottom: 12px; text-transform: uppercase; }
+        .card .value { font-size: 56px; font-weight: bold; }
+        .card .detail { font-size: 13px; color: #718096; margin-top: 8px; }
+        .card .legenda { font-size: 12px; color: #a0aec0; margin-top: 12px; font-style: italic; }
+        .card.finalizadas .value { color: #2f855a; }
+        .card.cancel .value { color: #c53030; }
+        
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 25px; margin-bottom: 30px; }
+        .chart-card { background: white; border-radius: 20px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        .chart-card h2 { font-size: 18px; margin-bottom: 15px; padding-left: 12px; border-left: 4px solid #3182ce; color: #2d3748; }
+        .chart-card .legenda-chart { font-size: 12px; color: #718096; margin-top: 10px; padding-top: 8px; border-top: 1px solid #e2e8f0; text-align: center; }
+        
+        .table-container { overflow-x: auto; margin-top: 25px; background: white; border-radius: 20px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #1a365d; color: white; padding: 12px 8px; font-weight: 600; }
+        td { padding: 10px 8px; text-align: center; border-bottom: 1px solid #e2e8f0; }
+        tr:hover { background: #f7fafc; }
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        .badge-green { background: #c6f6d5; color: #22543d; }
+        .badge-red { background: #fed7d7; color: #742a2a; }
+        
+        .footer { text-align: center; margin-top: 30px; padding: 15px; color: #718096; font-size: 12px; background: white; border-radius: 12px; }
+        
+        @media (max-width: 700px) {
+            .grid { grid-template-columns: 1fr; }
+            .card { min-width: 180px; padding: 20px; }
+            .card .value { font-size: 40px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>📊 Implantações Finalizadas vs Cancelamentos</h1>
+    <div class="sub">Janeiro a Maio 2026</div>
+
+    <div class="cards" id="cards"></div>
+
+    <div class="grid">
+        <div class="chart-card">
+            <h2>✅ Implantações Finalizadas por Colaborador</h2>
+            <div id="chart_finalizadas" style="height: 380px;"></div>
+            <div class="legenda-chart">📌 Total de implantações FINALIZADAS por colaborador no período.</div>
+        </div>
+        <div class="chart-card">
+            <h2>❌ Cancelamentos por Colaborador</h2>
+            <div id="chart_cancelamentos" style="height: 380px;"></div>
+            <div class="legenda-chart">📌 Total de CANCELAMENTOS por colaborador no período.</div>
+        </div>
+        <div class="chart-card">
+            <h2>📈 Evolução Mensal (Totais)</h2>
+            <div id="chart_mensal" style="height: 380px;"></div>
+            <div class="legenda-chart">📌 Verde = Implantações finalizadas. Vermelho = Cancelamentos.</div>
+        </div>
+        <div class="chart-card">
+            <h2>🏆 Ranking de Implantações Finalizadas</h2>
+            <div id="chart_ranking" style="height: 380px;"></div>
+            <div class="legenda-chart">📌 Colaboradores que mais finalizaram implantações.</div>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <h2 style="margin-bottom: 15px;">📋 Detalhamento por Colaborador</h2>
+        <table id="tabela">
+            <thead>
+                <tr><th>Rank</th><th>Colaborador</th><th>Jan</th><th>Fev</th><th>Mar</th><th>Abr</th><th>Mai</th><th>Total Finalizadas</th><th>Total Cancelamentos</th></tr>
+            </thead>
+            <tbody id="tabela-body"></tbody>
+        </table>
+        <div style="margin-top: 15px; font-size: 12px; color: #718096; text-align: center; padding: 8px; background: #f7fafc; border-radius: 8px;">
+            📌 <span class="badge badge-green">Verde</span> = Implantações finalizadas | <span class="badge badge-red">Vermelho</span> = Cancelamentos
+        </div>
+    </div>
+
+    <div class="footer">
+        📊 <strong>Indicadores:</strong> Implantações Finalizadas = entregas concluídas com sucesso | Cancelamentos = entregas não realizadas
+    </div>
+</div>
+
+<script>
+    google.charts.load('current', { packages: ['corechart'] });
+    google.charts.setOnLoadCallback(drawAll);
+
+    const colaboradores = ['Vitor', 'Kaio', 'Lucas', 'Jose', 'Paulo', 'Ulisses', 'Emerson', 'Isaque', 'Carlos'];
+    
+    const finalizadas = {
+        Janeiro:   [0, 4, 4, 1, 6, 0, 0, 0],
+        Fevereiro: [4, 5, 3, 3, 5, 0, 4, 0],
+        Marco:     [5, 4, 7, 1, 2, 2, 1, 2],
+        Abril:     [0, 2, 9, 0, 0, 3, 0, 0],
+        Maio:      [0, 4, 3, 0, 12, 8, 0, 1]
+    };
+    
+    const cancelamentos = {
+        Janeiro:   [0, 0, 4, 0, 0, 0, 0, 0],
+        Fevereiro: [1, 2, 3, 4, 2, 0, 0, 0],
+        Marco:     [2, 0, 3, 1, 3, 0, 0, 0],
+        Abril:     [0, 0, 0, 1, 0, 0, 0, 0],
+        Maio:      [1, 0, 0, 3, 0, 0, 0, 0]
+    };
+    
+    const totaisMensaisFinalizadas = { Janeiro:15, Fevereiro:24, Marco:24, Abril:14, Maio:28 };
+    const totaisMensaisCancel = { Janeiro:4, Fevereiro:12, Marco:9, Abril:1, Maio:4 };
+    const meses = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio'];
+    
+    function calcularTotais() {
+        let totalF = new Array(9).fill(0);
+        let totalC = new Array(9).fill(0);
+        for (let i = 0; i < meses.length; i++) {
+            let mes = meses[i];
+            let fRow = finalizadas[mes];
+            let cRow = cancelamentos[mes];
+            for (let j = 0; j < 9; j++) {
+                totalF[j] += (fRow[j] || 0);
+                totalC[j] += (cRow[j] || 0);
+            }
+        }
+        return { totalF, totalC };
+    }
+    
+    const { totalF, totalC } = calcularTotais();
+    const totalGeralFinalizadas = totalF.reduce((a,b) => a+b, 0);
+    const totalGeralCancel = totalC.reduce((a,b) => a+b, 0);
+    
+    const ranking = colaboradores.map((nome, idx) => ({ nome, finalizadas: totalF[idx], cancel: totalC[idx] }));
+    ranking.sort((a,b) => b.finalizadas - a.finalizadas);
+    
+    function drawCards() {
+        document.getElementById('cards').innerHTML = `
+            <div class="card finalizadas">
+                <h3>✅ Total de Implantações Finalizadas</h3>
+                <div class="value">${totalGeralFinalizadas}</div>
+                <div class="detail">Soma de todas as finalizações (Jan-Mai)</div>
+            </div>
+            <div class="card cancel">
+                <h3>❌ Total de Cancelamentos</h3>
+                <div class="value">${totalGeralCancel}</div>
+                <div class="detail">Soma de todos os cancelamentos (Jan-Mai)</div>
+            </div>
+        `;
+    }
+    
+    function drawFinalizadasChart() {
+        const data = new google.visualization.DataTable();
+        data.addColumn('string', 'Colaborador'); data.addColumn('number', 'Implantações Finalizadas');
+        for (let i = 0; i < colaboradores.length; i++) data.addRow([colaboradores[i], totalF[i]]);
+        const chart = new google.visualization.ColumnChart(document.getElementById('chart_finalizadas'));
+        chart.draw(data, { colors: ['#2f855a'], legend: { position: 'none' }, vAxis: { title: 'Quantidade' }, hAxis: { slantedText: true } });
+    }
+    
+    function drawCancelamentosChart() {
+        const data = new google.visualization.DataTable();
+        data.addColumn('string', 'Colaborador'); data.addColumn('number', 'Cancelamentos');
+        for (let i = 0; i < colaboradores.length; i++) data.addRow([colaboradores[i], totalC[i]]);
+        const chart = new google.visualization.ColumnChart(document.getElementById('chart_cancelamentos'));
+        chart.draw(data, { colors: ['#c53030'], legend: { position: 'none' }, vAxis: { title: 'Quantidade' }, hAxis: { slantedText: true } });
+    }
+    
+    function drawMensalChart() {
+        const data = new google.visualization.DataTable();
+        data.addColumn('string', 'Mês'); data.addColumn('number', 'Implantações Finalizadas'); data.addColumn('number', 'Cancelamentos');
+        data.addRow(['Jan', totaisMensaisFinalizadas.Janeiro, totaisMensaisCancel.Janeiro]);
+        data.addRow(['Fev', totaisMensaisFinalizadas.Fevereiro, totaisMensaisCancel.Fevereiro]);
+        data.addRow(['Mar', totaisMensaisFinalizadas.Marco, totaisMensaisCancel.Marco]);
+        data.addRow(['Abr', totaisMensaisFinalizadas.Abril, totaisMensaisCancel.Abril]);
+        data.addRow(['Mai', totaisMensaisFinalizadas.Maio, totaisMensaisCancel.Maio]);
+        const chart = new google.visualization.ColumnChart(document.getElementById('chart_mensal'));
+        chart.draw(data, { colors: ['#2f855a', '#c53030'], legend: { position: 'top' }, vAxis: { title: 'Quantidade' } });
+    }
+    
+    function drawRankingChart() {
+        const data = new google.visualization.DataTable();
+        data.addColumn('string', 'Colaborador'); data.addColumn('number', 'Implantações Finalizadas');
+        for (let i = 0; i < ranking.length; i++) data.addRow([ranking[i].nome, ranking[i].finalizadas]);
+        const chart = new google.visualization.BarChart(document.getElementById('chart_ranking'));
+        chart.draw(data, { colors: ['#d69e2e'], legend: { position: 'none' }, hAxis: { title: 'Quantidade' } });
+    }
+    
+    function drawTable() {
+        const tbody = document.getElementById('tabela-body');
+        tbody.innerHTML = '';
+        ranking.forEach((r, rank) => {
+            const idx = colaboradores.findIndex(c => c === r.nome);
+            const row = tbody.insertRow();
+            const rankBadge = rank === 0 ? '🥇' : (rank === 1 ? '🥈' : (rank === 2 ? '🥉' : `${rank+1}º`));
+            row.insertCell(0).innerHTML = rankBadge;
+            row.insertCell(1).innerHTML = `<strong>${r.nome}</strong>`;
+            for (let m = 0; m < meses.length; m++) {
+                const mes = meses[m];
+                const f = finalizadas[mes][idx] || 0;
+                const c = cancelamentos[mes][idx] || 0;
+                row.insertCell(m + 2).innerHTML = `<span class="badge badge-green">${f}</span> / <span class="badge badge-red">${c}</span>`;
+            }
+            row.insertCell(7).innerHTML = `<strong style="color:#2f855a">${totalF[idx]}</strong>`;
+            row.insertCell(8).innerHTML = `<strong style="color:#c53030">${totalC[idx]}</strong>`;
+        });
+    }
+    
+    function drawAll() {
+        drawCards();
+        drawFinalizadasChart();
+        drawCancelamentosChart();
+        drawMensalChart();
+        drawRankingChart();
+        drawTable();
+    }
+</script>
+</body>
+</html>

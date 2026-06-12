@@ -1,241 +1,1186 @@
-// ==================== RELATÓRIO DE COMISSÕES POR CONSULTOR (CORRIGIDO) ====================
-function gerarRelatorioComissoes() {
-    const dados = getDadosFiltradosDashboard();
-    
-    // Calcular comissão por consultor
-    const comissaoPorConsultor = {};
-    const faturamentoPorConsultor = {};
-    const quantidadePorConsultor = {};
-    const qualificadosPorConsultor = {};
-    
-    dados.forEach(item => {
-        const consultor = item.consultor;
-        const comissao = calcularComissao(item.valor, item.tipo);
-        const faturamento = item.valor;
-        
-        comissaoPorConsultor[consultor] = (comissaoPorConsultor[consultor] || 0) + comissao;
-        faturamentoPorConsultor[consultor] = (faturamentoPorConsultor[consultor] || 0) + faturamento;
-        quantidadePorConsultor[consultor] = (quantidadePorConsultor[consultor] || 0) + 1;
-        if (item.qualificado === "Sim") {
-            qualificadosPorConsultor[consultor] = (qualificadosPorConsultor[consultor] || 0) + 1;
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>Implantações - Sistema de Comissões</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #e8f4ff 0%, #d4eaff 100%);
+            min-height: 100vh;
+            padding: 16px;
         }
-    });
-    
-    const totalComissaoGeral = Object.values(comissaoPorConsultor).reduce((a,b)=>a+b,0);
-    const totalFaturamentoGeral = Object.values(faturamentoPorConsultor).reduce((a,b)=>a+b,0);
-    const totalImplantacoes = dados.length;
-    
-    // Montar cards do relatório
-    let cardsHtml = '';
-    const consultores = Object.keys(comissaoPorConsultor).sort();
-    
-    consultores.forEach(consultor => {
-        const comissao = comissaoPorConsultor[consultor] || 0;
-        const faturamento = faturamentoPorConsultor[consultor] || 0;
-        const quantidade = quantidadePorConsultor[consultor] || 0;
-        const qualificados = qualificadosPorConsultor[consultor] || 0;
-        const percQualif = quantidade ? (qualificados / quantidade * 100).toFixed(0) : 0;
-        const percComissao = faturamento ? ((comissao / faturamento) * 100).toFixed(1) : 0;
+        @media (min-width: 768px) { body { padding: 20px; } }
+        .container { max-width: 1600px; margin: 0 auto; }
+
+        .header {
+            background: white; border-radius: 20px; padding: 14px 20px; margin-bottom: 20px;
+            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05); border: 1px solid rgba(30,144,255,0.15);
+        }
+        @media (max-width: 600px) { .header { flex-direction: column; text-align: center; } }
+        .header h1 { color: #1e6ab3; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+        .user-info {
+            background: linear-gradient(135deg, #1e90ff 0%, #4da8ff 100%);
+            padding: 6px 16px; border-radius: 40px; color: white;
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px;
+        }
+        .timer-info { background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 30px; font-size: 11px; font-family: monospace; }
+        .logout-btn { background: rgba(255,255,255,0.2); border: none; padding: 6px 14px; border-radius: 30px; color: white; cursor: pointer; font-weight: 500; }
+        .btn-test-db { background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); color: white; border: none; padding: 6px 14px; border-radius: 40px; cursor: pointer; font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+        .btn-export { background: linear-gradient(135deg, #e17055 0%, #d63031 100%); color: white; border: none; padding: 6px 14px; border-radius: 40px; cursor: pointer; font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+        .btn-export-excel { background: linear-gradient(135deg, #00b894 0%, #019874 100%); color: white; border: none; padding: 6px 14px; border-radius: 40px; cursor: pointer; font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+        .btn-relatorio { background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); color: white; border: none; padding: 6px 14px; border-radius: 40px; cursor: pointer; font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+
+        .login-container {
+            display: flex; justify-content: center; align-items: center; min-height: 100vh;
+            background: linear-gradient(135deg, #e8f4ff 0%, #d4eaff 100%); padding: 20px;
+        }
+        .login-card {
+            background: white; padding: 32px 24px; border-radius: 28px;
+            box-shadow: 0 25px 50px rgba(30,144,255,0.2); width: 100%; max-width: 400px; text-align: center;
+        }
+        .login-card h2 { margin-bottom: 24px; color: #1e6ab3; font-size: 24px; }
+        .login-card select, .login-card input, .login-card button {
+            width: 100%; padding: 12px 14px; margin-bottom: 14px;
+            border: 1px solid #c5e0ff; border-radius: 14px; font-size: 14px; font-family: 'Inter', sans-serif;
+        }
+        .login-card button {
+            background: linear-gradient(135deg, #1e90ff 0%, #4da8ff 100%);
+            color: white; font-weight: 600; border: none; cursor: pointer;
+        }
+        .error-message { color: #e53e3e; font-size: 12px; margin-top: -8px; margin-bottom: 12px; display: none; }
+        .loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(30,144,255,0.95); display: flex; justify-content: center; align-items: center;
+            z-index: 9999; color: white; gap: 12px; flex-direction: column;
+        }
+
+        .tabs {
+            display: flex; gap: 8px; margin-bottom: 20px; background: white; border-radius: 50px;
+            padding: 5px; flex-wrap: wrap; justify-content: center;
+        }
+        .tab-btn {
+            background: transparent; border: none; padding: 10px 24px; border-radius: 40px;
+            color: #5a6e8a; cursor: pointer; font-weight: 600; font-size: 13px;
+        }
+        @media (max-width: 480px) { .tab-btn { padding: 8px 16px; font-size: 12px; } }
+        .tab-btn.active { background: linear-gradient(135deg, #1e90ff 0%, #4da8ff 100%); color: white; }
+        .tab-content { display: none; animation: fadeIn 0.3s ease; }
+        .tab-content.active { display: block; }
+
+        .filters-container {
+            background: white; border-radius: 20px; padding: 16px; margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .filters-title { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; color: #1e6ab3; font-size: 14px; font-weight: 600; }
+        .filters-grid {
+            display: grid; grid-template-columns: 1fr; gap: 12px;
+        }
+        @media (min-width: 480px) { .filters-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (min-width: 768px) { .filters-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (min-width: 1024px) { .filters-grid { grid-template-columns: repeat(5, 1fr); } }
+        .filter-group { display: flex; flex-direction: column; gap: 6px; }
+        .filter-group label { font-size: 11px; font-weight: 600; color: #4a5568; }
+        .filter-group input, .filter-group select {
+            padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 12px;
+            font-size: 13px; font-family: 'Inter', sans-serif; background: white;
+        }
+        .btn-clear { background: #f1f5f9; color: #1e6ab3; border: 1px solid #e2e8f0; padding: 10px 14px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 12px; width: 100%; }
+
+        .totals-container {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;
+        }
+        @media (min-width: 640px) { .totals-container { grid-template-columns: repeat(3, 1fr); } }
+        @media (min-width: 1024px) { .totals-container { grid-template-columns: repeat(6, 1fr); } }
+        .total-card {
+            background: white; border-radius: 16px; padding: 12px; text-align: center;
+            border: 1px solid rgba(30,144,255,0.15);
+        }
+        .total-icon { width: 36px; height: 36px; background: linear-gradient(135deg, #e8f4ff 0%, #d4eaff 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 8px auto; }
+        .total-icon i { font-size: 16px; color: #1e90ff; }
+        .total-value { font-size: 18px; font-weight: 800; color: #1e6ab3; }
+        .total-label { font-size: 10px; color: #718096; }
+
+        .dashboard-stats {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 24px;
+        }
+        @media (min-width: 640px) { .dashboard-stats { grid-template-columns: repeat(3, 1fr); } }
+        @media (min-width: 1024px) { .dashboard-stats { grid-template-columns: repeat(6, 1fr); } }
+        .stat-card {
+            background: white; border-radius: 16px; padding: 14px; text-align: center;
+            border: 1px solid rgba(30,144,255,0.15); transition: 0.3s;
+        }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(30,144,255,0.1); }
+        .stat-icon { width: 40px; height: 40px; background: linear-gradient(135deg, #e8f4ff 0%, #d4eaff 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 8px auto; }
+        .stat-icon i { font-size: 18px; color: #1e90ff; }
+        .stat-value { font-size: 22px; font-weight: 800; color: #1e6ab3; }
+        .stat-label { font-size: 11px; color: #718096; }
+        .stat-sub { font-size: 10px; color: #a0aec0; margin-top: 2px; }
+
+        .charts-grid {
+            display: grid; grid-template-columns: 1fr; gap: 20px; margin-top: 20px;
+        }
+        @media (min-width: 768px) { .charts-grid { grid-template-columns: repeat(2, 1fr); } }
+        .chart-card {
+            background: white; border-radius: 20px; padding: 16px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .chart-card h3 { font-size: 14px; font-weight: 600; color: #1e6ab3; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .chart-container { height: 220px; position: relative; }
+
+        .table-wrapper {
+            background: white; border-radius: 20px; overflow-x: auto;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .table-header { padding: 14px 16px; background: #fafcff; border-bottom: 1px solid #eef2ff; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .btn-add {
+            background: linear-gradient(135deg, #1e90ff 0%, #4da8ff 100%); color: white; border: none;
+            padding: 8px 16px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px;
+        }
+        table { width: 100%; min-width: 1000px; border-collapse: collapse; }
+        th { background: #fafcff; padding: 12px 8px; text-align: left; font-size: 11px; font-weight: 700; color: #4a5568; border-bottom: 2px solid #eef2ff; }
+        td { padding: 10px 8px; border-bottom: 1px solid #f0f4fa; font-size: 12px; }
+        input, select, textarea { width: 100%; padding: 6px 8px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 11px; }
+        .btn-delete { background: #fee2e2; color: #e53e3e; border: none; padding: 4px 10px; border-radius: 8px; cursor: pointer; font-size: 10px; font-weight: 600; }
+        .badge-pago { background: #48bb78; color: white; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; display: inline-block; }
+        .badge-pendente { background: #ed8936; color: white; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; display: inline-block; }
+        .badge-nao-pago { background: #fc8181; color: white; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; display: inline-block; }
+        .badge-qualificado { background: #48bb78; color: white; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; display: inline-block; }
+        .badge-nao-qualificado { background: #a0aec0; color: white; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; display: inline-block; }
+        .result-count { font-size: 11px; color: #718096; padding: 10px 16px; background: #fafcff; }
+        .hidden { display: none; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
-        cardsHtml += `
-            <div style="background: #f8fcff; border-radius: 16px; padding: 15px; border: 1px solid #e0f0ff;">
-                <div style="font-size: 15px; font-weight: 700; color: #1e6ab3; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
-                    <i class="fas fa-user-circle"></i> ${consultor}
+        @media (max-width: 900px) {
+            table { min-width: 800px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="loginScreen" class="login-container">
+    <div class="login-card">
+        <h2><i class="fas fa-chart-line"></i> Sistema de Implantações</h2>
+        <select id="userSelect">
+            <option value="">Selecione o usuário</option>
+            <option value="Lucas Lopes">Lucas Lopes</option>
+            <option value="Paulo Roberto">Paulo Roberto</option>
+            <option value="Kaio Lemos">Kaio Lemos</option>
+            <option value="Ulisses Neto">Ulisses Neto</option>
+            <option value="Emerson">Emerson</option>
+            <option value="Isaque">Isaque</option>
+            <option value="Gestor">Gestor (Administrador)</option>
+        </select>
+        <input type="password" id="passwordInput" placeholder="Digite sua senha">
+        <button onclick="fazerLogin()">Entrar <i class="fas fa-arrow-right"></i></button>
+        <div id="errorMessage" class="error-message"><i class="fas fa-exclamation-circle"></i> Usuário ou senha incorretos</div>
+    </div>
+</div>
+
+<div id="mainApp" class="container hidden">
+    <div class="header">
+        <h1><i class="fas fa-chart-pie"></i> Gestão de Implantações</h1>
+        <div class="user-info">
+            <i class="fas fa-user-circle"></i> <span id="currentUser"></span>
+            <span class="timer-info" id="timerDisplay"><i class="fas fa-hourglass-half"></i> 60:00</span>
+            <button class="btn-test-db" id="btnTestConexao" onclick="testarConexaoFirebase()" style="display: none;"><i class="fas fa-database"></i> Testar</button>
+            <button class="btn-relatorio" id="btnRelatorio" onclick="gerarRelatorioComissoes()" style="display: none;"><i class="fas fa-chart-simple"></i> Relatório</button>
+            <button class="btn-export" onclick="exportarPDF()"><i class="fas fa-file-pdf"></i> PDF</button>
+            <button class="btn-export-excel" onclick="exportarExcel()"><i class="fas fa-file-excel"></i> Excel</button>
+            <button class="logout-btn" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Sair</button>
+        </div>
+    </div>
+
+    <div class="tabs" id="tabsContainer"></div>
+
+    <!-- ABA LANÇAMENTOS -->
+    <div id="tab-lancamentos" class="tab-content">
+        <div class="filters-container">
+            <div class="filters-title"><i class="fas fa-filter"></i> Filtros de Busca</div>
+            <div class="filters-grid">
+                <div class="filter-group" id="filtroConsultorGroup" style="display: none;">
+                    <label><i class="fas fa-users"></i> Consultor</label>
+                    <select id="filtroConsultor"><option value="">Todos</option><option value="Lucas Lopes">Lucas Lopes</option><option value="Paulo Roberto">Paulo Roberto</option><option value="Kaio Lemos">Kaio Lemos</option><option value="Ulisses Neto">Ulisses Neto</option><option value="Emerson">Emerson</option><option value="Isaque">Isaque</option></select>
                 </div>
-                <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e0f0ff;">
-                    <span style="font-size: 12px; color: #4a5568;">💰 Faturamento:</span>
-                    <span style="font-weight: 700; color: #1e6ab3;">R$ ${faturamento.toFixed(2)}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e0f0ff;">
-                    <span style="font-size: 12px; color: #4a5568;">📊 Comissão:</span>
-                    <span style="font-weight: 700; color: #1e6ab3;">R$ ${comissao.toFixed(2)}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e0f0ff;">
-                    <span style="font-size: 12px; color: #4a5568;">📦 Implantações:</span>
-                    <span style="font-weight: 700; color: #1e6ab3;">${quantidade}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e0f0ff;">
-                    <span style="font-size: 12px; color: #4a5568;">✅ Qualificados:</span>
-                    <span style="font-weight: 700; color: #1e6ab3;">${qualificados} (${percQualif}%)</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 2px solid #1e90ff;">
-                    <span style="font-weight: 700; font-size: 13px;">📈 % Comissão:</span>
-                    <span style="font-weight: 800; font-size: 14px; color: #1e90ff;">${percComissao}%</span>
-                </div>
+                <div class="filter-group"><label><i class="fas fa-calendar"></i> Data Início</label><input type="date" id="filtroDataInicio"></div>
+                <div class="filter-group"><label><i class="fas fa-calendar"></i> Data Fim</label><input type="date" id="filtroDataFim"></div>
+                <div class="filter-group"><label><i class="fas fa-building"></i> Cliente</label><input type="text" id="filtroCliente" placeholder="Nome do cliente"></div>
+                <div class="filter-group"><label><i class="fas fa-laptop"></i> Tipo</label><select id="filtroTipo"><option value="">Todos</option><option value="implantacao_online">🌐 Implantação Online</option><option value="implantacao_presencial">🏢 Implantação Presencial</option><option value="upsell_online">⬆️ Upsell Online</option><option value="upsell_presencial">🏢⬆️ Upsell Presencial</option></select></div>
+                <div class="filter-actions"><button class="btn-clear" onclick="limparFiltrosLancamentos()"><i class="fas fa-eraser"></i> Limpar</button></div>
             </div>
-        `;
-    });
-    
-    // Montar tabela de lançamentos
-    let tabelaLancamentos = '<table style="width:100%; border-collapse: collapse; font-size: 10px; margin-top: 15px;">';
-    tabelaLancamentos += '<thead><tr style="background: #1e90ff; color: white;">';
-    tabelaLancamentos += '<th style="padding: 8px; border: 1px solid #ddd;">Consultor</th>';
-    tabelaLancamentos += '<th style="padding: 8px; border: 1px solid #ddd;">Cliente</th>';
-    tabelaLancamentos += '<th style="padding: 8px; border: 1px solid #ddd;">Valor</th>';
-    tabelaLancamentos += '<th style="padding: 8px; border: 1px solid #ddd;">Tipo</th>';
-    tabelaLancamentos += '<th style="padding: 8px; border: 1px solid #ddd;">Comissão</th>';
-    tabelaLancamentos += '<th style="padding: 8px; border: 1px solid #ddd;">Qualificado</th>';
-    tabelaLancamentos += '<th style="padding: 8px; border: 1px solid #ddd;">Status</th>';
-    tabelaLancamentos += '</tr></thead><tbody>';
-    
-    dados.slice(0, 20).forEach(item => {
-        const tipoTexto = item.tipo === 'implantacao_online' ? '🌐 Online' : item.tipo === 'implantacao_presencial' ? '🏢 Presencial' : item.tipo === 'upsell_online' ? '⬆️ Upsell Online' : '🏢⬆️ Upsell Presencial';
-        const statusTexto = item.pago === 'Sim' ? '💰 Pago' : item.pago === 'Pendente' ? '⏰ Pendente' : '❌ Não pago';
-        tabelaLancamentos += `<tr>`;
-        tabelaLancamentos += `<td style="padding: 6px; border: 1px solid #ddd;">${item.consultor}</td>`;
-        tabelaLancamentos += `<td style="padding: 6px; border: 1px solid #ddd;">${item.cliente}</td>`;
-        tabelaLancamentos += `<td style="padding: 6px; border: 1px solid #ddd;">R$ ${item.valor.toFixed(2)}</td>`;
-        tabelaLancamentos += `<td style="padding: 6px; border: 1px solid #ddd;">${tipoTexto}</td>`;
-        tabelaLancamentos += `<td style="padding: 6px; border: 1px solid #ddd;">R$ ${calcularComissao(item.valor, item.tipo).toFixed(2)}</td>`;
-        tabelaLancamentos += `<td style="padding: 6px; border: 1px solid #ddd;">${item.qualificado === 'Sim' ? '✅ Sim' : '❌ Não'}</td>`;
-        tabelaLancamentos += `<td style="padding: 6px; border: 1px solid #ddd;">${statusTexto}</td>`;
-        tabelaLancamentos += `</tr>`;
-    });
-    
-    if(dados.length > 20) {
-        tabelaLancamentos += `<tr><td colspan="7" style="text-align: center; padding: 8px;"><strong>... e mais ${dados.length - 20} registros</strong></td></tr>`;
+        </div>
+        
+        <div class="totals-container" id="totalsLancamentos"></div>
+        
+        <div class="table-wrapper">
+            <div class="table-header">
+                <h3><i class="fas fa-list"></i> <span id="tituloTabela">Lançamentos</span></h3>
+                <button class="btn-add" onclick="addImplantacao()"><i class="fas fa-plus"></i> Novo Lançamento</button>
+            </div>
+            <div style="overflow-x: auto;">
+                <table id="tabela-lancamentos">
+                    <thead>
+                        <tr><th>Consultor</th><th>Cliente</th><th>CNPJ</th><th>Data Início</th><th>Data Fim</th><th>Data Prevista</th><th>Observação</th><th>Valor (R$)</th><th>Tipo</th><th>Imposto</th><th>Comissão</th><th>Líquido</th><th>Qualificado</th><th>Status Pago</th><th>Ações</th></tr>
+                    </thead>
+                    <tbody id="table-body"></tbody>
+                </table>
+            </div>
+            <div class="result-count" id="resultCount"></div>
+        </div>
+    </div>
+
+    <!-- ABA DASHBOARD -->
+    <div id="tab-dashboard" class="tab-content">
+        <div class="filters-container">
+            <div class="filters-title"><i class="fas fa-filter"></i> Filtros do Dashboard</div>
+            <div class="filters-grid">
+                <div class="filter-group" id="filtroConsultorGroupDash" style="display: none;">
+                    <label><i class="fas fa-users"></i> Consultor</label>
+                    <select id="filtroConsultorDash"><option value="">Todos</option><option value="Lucas Lopes">Lucas Lopes</option><option value="Paulo Roberto">Paulo Roberto</option><option value="Kaio Lemos">Kaio Lemos</option><option value="Ulisses Neto">Ulisses Neto</option><option value="Emerson">Emerson</option><option value="Isaque">Isaque</option></select>
+                </div>
+                <div class="filter-group"><label><i class="fas fa-calendar"></i> Data Início</label><input type="date" id="filtroDataInicioDash"></div>
+                <div class="filter-group"><label><i class="fas fa-calendar"></i> Data Fim</label><input type="date" id="filtroDataFimDash"></div>
+                <div class="filter-group"><label><i class="fas fa-building"></i> Cliente</label><input type="text" id="filtroClienteDash" placeholder="Nome do cliente"></div>
+                <div class="filter-group"><label><i class="fas fa-check-circle"></i> Qualificado</label><select id="filtroQualificadoDash"><option value="">Todos</option><option value="Sim">Sim</option><option value="Não">Não</option></select></div>
+                <div class="filter-group"><label><i class="fas fa-credit-card"></i> Status Pagamento</label><select id="filtroStatusDash"><option value="">Todos</option><option value="Pago">Pago</option><option value="Pendente">Pendente</option><option value="Não">Não Pago</option></select></div>
+                <div class="filter-group"><label><i class="fas fa-laptop"></i> Tipo</label><select id="filtroTipoDash"><option value="">Todos</option><option value="implantacao_online">🌐 Implantação Online</option><option value="implantacao_presencial">🏢 Implantação Presencial</option><option value="upsell_online">⬆️ Upsell Online</option><option value="upsell_presencial">🏢⬆️ Upsell Presencial</option></select></div>
+                <div class="filter-actions"><button class="btn-clear" onclick="limparFiltrosDashboard()"><i class="fas fa-eraser"></i> Limpar</button></div>
+            </div>
+        </div>
+        
+        <div class="dashboard-stats" id="dashboardStats"></div>
+        <div class="charts-grid" id="chartsGrid"></div>
+    </div>
+</div>
+
+<div id="loadingOverlay" class="loading-overlay hidden">
+    <i class="fas fa-spinner fa-pulse fa-2x"></i><span>Carregando...</span>
+</div>
+
+<script>
+    // Firebase Config
+    const firebaseConfig = {
+        apiKey: "AIzaSyCl175-_U_FRUEKjnm38x8UPjn_3hXzxRE",
+        authDomain: "implanta-a80a5.firebaseapp.com",
+        projectId: "implanta-a80a5",
+        storageBucket: "implanta-a80a5.firebasestorage.app",
+        messagingSenderId: "492616353360",
+        appId: "1:492616353360:web:8713321e8f5b5a22853355",
+        measurementId: "G-PT04CCP58J"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const usuarios = {
+        "Lucas Lopes": { senha: "lucas123", tipo: "consultor" },
+        "Paulo Roberto": { senha: "paulo123", tipo: "consultor" },
+        "Kaio Lemos": { senha: "kaio123", tipo: "consultor" },
+        "Ulisses Neto": { senha: "ulisses123", tipo: "consultor" },
+        "Emerson": { senha: "emerson123", tipo: "consultor" },
+        "Isaque": { senha: "isaque123", tipo: "consultor" },
+        "Gestor": { senha: "adm123", tipo: "gestor" }
+    };
+
+    let currentUser = null, isGestor = false, charts = {}, implantacoes = [];
+    let timeoutTimer = null, countdownTimer = null, ultimaAtividade = Date.now();
+    const sessionId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+
+    function calcularImposto(valor) { return valor * 0.16; }
+    function calcularComissao(valor, tipo) {
+        if (valor === 0) return (tipo === "implantacao_presencial" || tipo === "upsell_presencial") ? 200 : 50;
+        const base = valor - calcularImposto(valor);
+        switch(tipo) {
+            case "implantacao_online": return base * 0.15;
+            case "implantacao_presencial": return base * 0.25;
+            case "upsell_online": return base * 0.15;
+            case "upsell_presencial": return base * 0.25;
+            default: return 0;
+        }
     }
-    tabelaLancamentos += '</tbody></table>';
+    function calcularValorLiquido(valor, tipo) { return valor - calcularImposto(valor) - calcularComissao(valor, tipo); }
+
+    async function testarConexaoFirebase() {
+        const modal = document.createElement('div'); modal.className = 'modal-status';
+        modal.innerHTML = `<div class="modal-status-content"><i class="fas fa-spinner fa-pulse fa-2x"></i><h3>Testando...</h3><div style="margin:15px 0;text-align:left"><p><strong>Firebase:</strong> <span id="tsdk"></span></p><p><strong>Firestore:</strong> <span id="tdb"></span></p><p><strong>Registros:</strong> <span id="tcount"></span></p></div><button onclick="this.closest('.modal-status').remove()">Fechar</button></div>`;
+        document.body.appendChild(modal);
+        document.getElementById('tsdk').innerHTML = typeof firebase !== 'undefined' ? '✅ OK' : '❌ Erro';
+        try {
+            const snap = await db.collection('implantacoes').get();
+            document.getElementById('tdb').innerHTML = '✅ Conectado';
+            document.getElementById('tcount').innerHTML = `${snap.size} registros`;
+            modal.querySelector('i').className = 'fas fa-check-circle fa-2x'; modal.querySelector('i').style.color = '#48bb78';
+            modal.querySelector('h3').innerHTML = '✅ Conexão OK!';
+        } catch(e) {
+            document.getElementById('tdb').innerHTML = '❌ Erro';
+            modal.querySelector('i').className = 'fas fa-exclamation-triangle fa-2x'; modal.querySelector('i').style.color = '#fc8181';
+            modal.querySelector('h3').innerHTML = '❌ Falha!';
+        }
+    }
+
+    function resetarTimeout() {
+        ultimaAtividade = Date.now();
+        if(timeoutTimer) clearTimeout(timeoutTimer);
+        if(countdownTimer) clearInterval(countdownTimer);
+        timeoutTimer = setTimeout(() => { if(currentUser) { alert("Sessão expirada!"); logout(); } }, 60*60*1000);
+        iniciarCountdown();
+    }
+    function iniciarCountdown() {
+        const timer = document.getElementById('timerDisplay');
+        if(!timer) return;
+        if(countdownTimer) clearInterval(countdownTimer);
+        countdownTimer = setInterval(() => {
+            if(!currentUser) { clearInterval(countdownTimer); return; }
+            const restante = Math.max(0, 3600 - (Date.now()-ultimaAtividade)/1000);
+            const m = Math.floor(restante/60), s = Math.floor(restante%60);
+            if(timer) timer.innerHTML = `<i class="fas fa-hourglass-half"></i> ${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+        }, 1000);
+    }
+    ['click','mousemove','keypress','scroll','touchstart','touchmove'].forEach(e => document.addEventListener(e, () => currentUser && resetarTimeout()));
+
+    async function carregarDados() {
+        document.getElementById('loadingOverlay').classList.remove('hidden');
+        try {
+            const snap = await db.collection('implantacoes').get();
+            implantacoes = [];
+            snap.forEach(doc => implantacoes.push({ id: doc.id, ...doc.data() }));
+            if(implantacoes.length === 0) await carregarDadosIniciais();
+            aplicarFiltrosLancamentos();
+            aplicarFiltrosDashboard();
+        } catch(e) { alert("Erro: " + e.message); }
+        document.getElementById('loadingOverlay').classList.add('hidden');
+    }
+
+    async function carregarDadosIniciais() {
+        const dados = [
+            { consultor:"Lucas Lopes", cliente:"Empresa Alpha", cnpj:"12.345.678/0001-90", dataInicio:"2026-01-10", dataFim:"2026-01-20", dataPrevista:"2026-01-25", observacao:"Concluída", valor:10000, tipo:"implantacao_online", qualificado:"Sim", pago:"Sim" },
+            { consultor:"Paulo Roberto", cliente:"Beta Solutions", cnpj:"98.765.432/0001-11", dataInicio:"2026-02-05", dataFim:"2026-02-18", dataPrevista:"2026-02-20", observacao:"Sucesso", valor:15000, tipo:"implantacao_presencial", qualificado:"Sim", pago:"Pendente" },
+            { consultor:"Kaio Lemos", cliente:"Gamma Tech", cnpj:"11.222.333/0001-44", dataInicio:"2026-03-01", dataFim:"2026-03-10", dataPrevista:"2026-03-15", observacao:"Pendente", valor:5000, tipo:"upsell_online", qualificado:"Não", pago:"Não" },
+            { consultor:"Ulisses Neto", cliente:"Delta Corp", cnpj:"55.444.333/0001-22", dataInicio:"2026-01-15", dataFim:"2026-01-28", dataPrevista:"2026-01-30", observacao:"Satisfeito", valor:8000, tipo:"upsell_presencial", qualificado:"Sim", pago:"Pago" },
+            { consultor:"Emerson", cliente:"Epsilon SA", cnpj:"77.888.999/0001-33", dataInicio:"2026-02-20", dataFim:"2026-03-05", dataPrevista:"2026-03-10", observacao:"Aguardando", valor:0, tipo:"implantacao_online", qualificado:"Não", pago:"Não" },
+            { consultor:"Isaque", cliente:"Zeta Group", cnpj:"99.111.222/0001-55", dataInicio:"2026-03-10", dataFim:"2026-03-20", dataPrevista:"2026-03-25", observacao:"Em andamento", valor:12000, tipo:"implantacao_presencial", qualificado:"Sim", pago:"Pago" }
+        ];
+        for(const item of dados) { const ref = await db.collection('implantacoes').add(item); implantacoes.push({ id: ref.id, ...item }); }
+    }
+
+    async function salvarImplantacao(item) { await db.collection('implantacoes').doc(item.id).set(item); }
+    async function excluirImplantacao(id, cliente) { if(confirm(`Excluir "${cliente}"?`)) { await db.collection('implantacoes').doc(id).delete(); implantacoes = implantacoes.filter(i => i.id !== id); aplicarFiltrosLancamentos(); aplicarFiltrosDashboard(); } }
+    async function updateField(id, field, value) { const idx = implantacoes.findIndex(i => i.id === id); if(idx !== -1) { implantacoes[idx][field] = value; await salvarImplantacao(implantacoes[idx]); aplicarFiltrosLancamentos(); aplicarFiltrosDashboard(); } }
+    async function addImplantacao() {
+        const nova = { consultor: currentUser, cliente: "Novo Cliente", cnpj: "", dataInicio: new Date().toISOString().split('T')[0], dataFim: "", dataPrevista: "", observacao: "", valor: 0, tipo: "implantacao_online", qualificado: "Não", pago: "Não" };
+        const ref = await db.collection('implantacoes').add(nova);
+        implantacoes.push({ id: ref.id, ...nova });
+        aplicarFiltrosLancamentos();
+        aplicarFiltrosDashboard();
+    }
+
+    function getDadosBase() { return isGestor ? implantacoes : implantacoes.filter(i => i.consultor === currentUser); }
+
+    function getDadosFiltradosLancamentos() {
+        let dados = getDadosBase();
+        const cf = document.getElementById('filtroConsultor')?.value;
+        if(isGestor && cf) dados = dados.filter(i => i.consultor === cf);
+        const di = document.getElementById('filtroDataInicio')?.value;
+        const df = document.getElementById('filtroDataFim')?.value;
+        const cli = document.getElementById('filtroCliente')?.value.toLowerCase();
+        const tipo = document.getElementById('filtroTipo')?.value;
+        if(di) dados = dados.filter(i => i.dataInicio >= di);
+        if(df) dados = dados.filter(i => i.dataFim <= df);
+        if(cli) dados = dados.filter(i => i.cliente?.toLowerCase().includes(cli));
+        if(tipo) dados = dados.filter(i => i.tipo === tipo);
+        return dados;
+    }
     
-    // HTML completo do relatório
-    const relatorioHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Relatório de Comissões por Consultor</title>
-            <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
-                body {
-                    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
-                    padding: 30px;
-                    background: white;
-                }
-                .header {
-                    text-align: center;
-                    margin-bottom: 25px;
-                    padding-bottom: 15px;
-                    border-bottom: 2px solid #1e90ff;
-                }
-                .header h1 { color: #1e6ab3; font-size: 22px; margin-bottom: 5px; }
-                .header p { color: #718096; font-size: 11px; margin: 3px 0; }
-                .section { margin-bottom: 25px; }
-                .section h2 { color: #1e6ab3; font-size: 16px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0; }
-                .resumo-grid {
-                    display: grid;
-                    grid-template-columns: repeat(4, 1fr);
-                    gap: 15px;
-                    margin-bottom: 20px;
-                }
-                .resumo-card {
-                    text-align: center;
-                    padding: 15px;
-                    background: #f8fcff;
-                    border-radius: 12px;
-                    border: 1px solid #e0f0ff;
-                }
-                .resumo-valor { font-size: 22px; font-weight: 800; color: #1e6ab3; }
-                .resumo-label { font-size: 11px; color: #718096; margin-top: 5px; }
-                .cards-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-                    gap: 16px;
-                    margin-top: 15px;
-                }
-                table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin-top: 15px;
-                }
-                th {
-                    background: #1e90ff;
-                    color: white;
-                    padding: 8px;
-                    border: 1px solid #ddd;
-                    text-align: left;
-                    font-size: 11px;
-                }
-                td {
-                    padding: 6px;
-                    border: 1px solid #ddd;
-                    font-size: 10px;
-                }
-                .footer {
-                    margin-top: 25px;
-                    padding-top: 12px;
-                    border-top: 1px solid #e2e8f0;
-                    text-align: center;
-                    font-size: 9px;
-                    color: #a0aec0;
-                }
-                @media print {
-                    body { padding: 15px; }
-                    button { display: none; }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1><i class="fas fa-chart-line"></i> Relatório de Comissões por Consultor</h1>
-                <p>Sistema de Implantações</p>
-                <p>Gerado em: ${new Date().toLocaleString('pt-BR')}</p>
-                <p>Usuário: ${currentUser} ${isGestor ? '(Gestor)' : '(Consultor)'}</p>
-            </div>
+    function getDadosFiltradosDashboard() {
+        let dados = getDadosBase();
+        const cf = document.getElementById('filtroConsultorDash')?.value;
+        if(isGestor && cf) dados = dados.filter(i => i.consultor === cf);
+        const di = document.getElementById('filtroDataInicioDash')?.value;
+        const df = document.getElementById('filtroDataFimDash')?.value;
+        const cli = document.getElementById('filtroClienteDash')?.value.toLowerCase();
+        const qualificado = document.getElementById('filtroQualificadoDash')?.value;
+        const status = document.getElementById('filtroStatusDash')?.value;
+        const tipo = document.getElementById('filtroTipoDash')?.value;
+        if(di) dados = dados.filter(i => i.dataInicio >= di);
+        if(df) dados = dados.filter(i => i.dataFim <= df);
+        if(cli) dados = dados.filter(i => i.cliente?.toLowerCase().includes(cli));
+        if(qualificado) dados = dados.filter(i => i.qualificado === qualificado);
+        if(status) dados = dados.filter(i => i.pago === status);
+        if(tipo) dados = dados.filter(i => i.tipo === tipo);
+        return dados;
+    }
+
+    function aplicarFiltrosLancamentos() {
+        const dados = getDadosFiltradosLancamentos();
+        renderTabela(dados);
+        renderTotalizadoresLancamentos(dados);
+        document.getElementById('resultCount').innerHTML = `<i class="fas fa-chart-simple"></i> Mostrando ${dados.length} registro(s)`;
+    }
+    
+    function aplicarFiltrosDashboard() {
+        const dados = getDadosFiltradosDashboard();
+        renderDashboard(dados);
+    }
+
+    function limparFiltrosLancamentos() {
+        if(isGestor) document.getElementById('filtroConsultor').value = '';
+        document.getElementById('filtroDataInicio').value = '';
+        document.getElementById('filtroDataFim').value = '';
+        document.getElementById('filtroCliente').value = '';
+        document.getElementById('filtroTipo').value = '';
+        aplicarFiltrosLancamentos();
+    }
+    
+    function limparFiltrosDashboard() {
+        if(isGestor) document.getElementById('filtroConsultorDash').value = '';
+        document.getElementById('filtroDataInicioDash').value = '';
+        document.getElementById('filtroDataFimDash').value = '';
+        document.getElementById('filtroClienteDash').value = '';
+        document.getElementById('filtroQualificadoDash').value = '';
+        document.getElementById('filtroStatusDash').value = '';
+        document.getElementById('filtroTipoDash').value = '';
+        aplicarFiltrosDashboard();
+    }
+
+    function renderTotalizadoresLancamentos(dados) {
+        const totalVendas = dados.reduce((s,i)=>s+i.valor,0);
+        const totalComissao = dados.reduce((s,i)=>s+calcularComissao(i.valor,i.tipo),0);
+        const totalImposto = dados.reduce((s,i)=>s+calcularImposto(i.valor),0);
+        const totalLiquido = dados.reduce((s,i)=>s+calcularValorLiquido(i.valor,i.tipo),0);
+        const totalRegistros = dados.length;
+        const ticketMedio = totalRegistros ? totalVendas / totalRegistros : 0;
+        
+        document.getElementById('totalsLancamentos').innerHTML = `
+            <div class="total-card"><div class="total-icon"><i class="fas fa-dollar-sign"></i></div><div class="total-value">R$ ${totalVendas.toFixed(0)}</div><div class="total-label">Total Vendas</div></div>
+            <div class="total-card"><div class="total-icon"><i class="fas fa-calculator"></i></div><div class="total-value">R$ ${totalImposto.toFixed(0)}</div><div class="total-label">Impostos (16%)</div></div>
+            <div class="total-card"><div class="total-icon"><i class="fas fa-hand-holding-usd"></i></div><div class="total-value">R$ ${totalComissao.toFixed(0)}</div><div class="total-label">Total Comissões</div></div>
+            <div class="total-card"><div class="total-icon"><i class="fas fa-money-bill-wave"></i></div><div class="total-value">R$ ${totalLiquido.toFixed(0)}</div><div class="total-label">Valor Líquido</div></div>
+            <div class="total-card"><div class="total-icon"><i class="fas fa-chart-line"></i></div><div class="total-value">${totalRegistros}</div><div class="total-label">Implantações</div></div>
+            <div class="total-card"><div class="total-icon"><i class="fas fa-ticket-alt"></i></div><div class="total-value">R$ ${ticketMedio.toFixed(0)}</div><div class="total-label">Ticket Médio</div></div>
+        `;
+    }
+
+    function renderTabela(dados) {
+        const tbody = document.getElementById('table-body');
+        if(!tbody) return;
+        tbody.innerHTML = '';
+        
+        dados.forEach(item => {
+            const imposto = calcularImposto(item.valor);
+            const comissao = calcularComissao(item.valor, item.tipo);
+            const liquido = calcularValorLiquido(item.valor, item.tipo);
+            const tr = tbody.insertRow();
             
-            <div class="section">
-                <h2>📊 Resumo Geral</h2>
-                <div class="resumo-grid">
-                    <div class="resumo-card">
-                        <div class="resumo-valor">${totalImplantacoes}</div>
-                        <div class="resumo-label">Total de Implantações</div>
+            if(isGestor) {
+                tr.insertCell(0).innerHTML = `<input value="${item.consultor}" onchange="updateField('${item.id}','consultor',this.value)" style="width:100px">`;
+            } else {
+                tr.insertCell(0).innerHTML = item.consultor;
+            }
+            tr.insertCell(1).innerHTML = `<input value="${item.cliente}" onchange="updateField('${item.id}','cliente',this.value)" style="width:120px">`;
+            tr.insertCell(2).innerHTML = `<input value="${item.cnpj}" onchange="updateField('${item.id}','cnpj',this.value)" style="width:140px">`;
+            tr.insertCell(3).innerHTML = `<input type="date" value="${item.dataInicio}" onchange="updateField('${item.id}','dataInicio',this.value)" style="width:110px">`;
+            tr.insertCell(4).innerHTML = `<input type="date" value="${item.dataFim}" onchange="updateField('${item.id}','dataFim',this.value)" style="width:110px">`;
+            tr.insertCell(5).innerHTML = `<input type="date" value="${item.dataPrevista}" onchange="updateField('${item.id}','dataPrevista',this.value)" style="width:110px">`;
+            tr.insertCell(6).innerHTML = `<textarea onchange="updateField('${item.id}','observacao',this.value)" rows="1" style="width:100px">${item.observacao}</textarea>`;
+            tr.insertCell(7).innerHTML = `<input type="number" value="${item.valor}" onchange="updateField('${item.id}','valor',parseFloat(this.value))" style="width:80px">`;
+            tr.insertCell(8).innerHTML = `<select onchange="updateField('${item.id}','tipo',this.value)" style="width:110px"><option ${item.tipo=="implantacao_online"?"selected":""} value="implantacao_online">🌐 Online</option><option ${item.tipo=="implantacao_presencial"?"selected":""} value="implantacao_presencial">🏢 Presencial</option><option ${item.tipo=="upsell_online"?"selected":""} value="upsell_online">⬆️ Upsell Online</option><option ${item.tipo=="upsell_presencial"?"selected":""} value="upsell_presencial">🏢⬆️ Upsell Presencial</option></select>`;
+            tr.insertCell(9).innerHTML = `R$ ${imposto.toFixed(2)}`;
+            tr.insertCell(10).innerHTML = `R$ ${comissao.toFixed(2)}`;
+            tr.insertCell(11).innerHTML = `R$ ${liquido.toFixed(2)}`;
+            
+            if(isGestor) {
+                tr.insertCell(12).innerHTML = `<select onchange="updateField('${item.id}','qualificado',this.value)"><option ${item.qualificado=="Sim"?"selected":""}>Sim</option><option ${item.qualificado=="Não"?"selected":""}>Não</option></select>`;
+            } else {
+                const badgeQual = item.qualificado === "Sim" ? '<span class="badge-qualificado">✔ Qualificado</span>' : '<span class="badge-nao-qualificado">⏳ Pendente</span>';
+                tr.insertCell(12).innerHTML = badgeQual;
+            }
+            
+            if(isGestor) {
+                tr.insertCell(13).innerHTML = `<select onchange="updateField('${item.id}','pago',this.value)"><option ${item.pago=="Sim"?"selected":""}>Sim</option><option ${item.pago=="Pendente"?"selected":""}>Pendente</option><option ${item.pago=="Não"?"selected":""}>Não</option></select>`;
+            } else {
+                let badgePag = '';
+                if(item.pago === "Sim") badgePag = '<span class="badge-pago">💰 Pago</span>';
+                else if(item.pago === "Pendente") badgePag = '<span class="badge-pendente">⏰ Pendente</span>';
+                else badgePag = '<span class="badge-nao-pago">❌ Não pago</span>';
+                tr.insertCell(13).innerHTML = badgePag;
+            }
+            
+            tr.insertCell(14).innerHTML = `<button class="btn-delete" onclick="excluirImplantacao('${item.id}','${item.cliente}')"><i class="fas fa-trash"></i> Excluir</button>`;
+        });
+    }
+
+    function renderDashboard(dados) {
+        const totalVendas = dados.reduce((s,i)=>s+i.valor,0);
+        const totalComissao = dados.reduce((s,i)=>s+calcularComissao(i.valor,i.tipo),0);
+        const totalImposto = dados.reduce((s,i)=>s+calcularImposto(i.valor),0);
+        const totalLiquido = dados.reduce((s,i)=>s+calcularValorLiquido(i.valor,i.tipo),0);
+        const totalQualificados = dados.filter(i=>i.qualificado==="Sim").length;
+        const percQualif = dados.length ? (totalQualificados/dados.length)*100 : 0;
+        const totalPagos = dados.filter(i=>i.pago==="Sim").length;
+        const percPago = dados.length ? (totalPagos/dados.length)*100 : 0;
+        const ticketMedio = dados.length ? totalVendas / dados.length : 0;
+        
+        document.getElementById('dashboardStats').innerHTML = `
+            <div class="stat-card"><div class="stat-icon"><i class="fas fa-dollar-sign"></i></div><div class="stat-value">R$ ${totalVendas.toFixed(0)}</div><div class="stat-label">Total Vendas</div><div class="stat-sub">Faturamento bruto</div></div>
+            <div class="stat-card"><div class="stat-icon"><i class="fas fa-calculator"></i></div><div class="stat-value">R$ ${totalImposto.toFixed(0)}</div><div class="stat-label">Total Impostos</div><div class="stat-sub">16% sobre vendas</div></div>
+            <div class="stat-card"><div class="stat-icon"><i class="fas fa-hand-holding-usd"></i></div><div class="stat-value">R$ ${totalComissao.toFixed(0)}</div><div class="stat-label">Total Comissões</div><div class="stat-sub">A pagar</div></div>
+            <div class="stat-card"><div class="stat-icon"><i class="fas fa-money-bill-wave"></i></div><div class="stat-value">R$ ${totalLiquido.toFixed(0)}</div><div class="stat-label">Valor Líquido</div><div class="stat-sub">Após impostos e comissões</div></div>
+            <div class="stat-card"><div class="stat-icon"><i class="fas fa-check-circle"></i></div><div class="stat-value">${percQualif.toFixed(0)}%</div><div class="stat-label">Qualificação</div><div class="stat-sub">${totalQualificados}/${dados.length} negócios</div></div>
+            <div class="stat-card"><div class="stat-icon"><i class="fas fa-credit-card"></i></div><div class="stat-value">${percPago.toFixed(0)}%</div><div class="stat-label">Recebimento</div><div class="stat-sub">${totalPagos}/${dados.length} pagos</div></div>
+            <div class="stat-card"><div class="stat-icon"><i class="fas fa-ticket-alt"></i></div><div class="stat-value">R$ ${ticketMedio.toFixed(0)}</div><div class="stat-label">Ticket Médio</div><div class="stat-sub">Por implantação</div></div>
+            <div class="stat-card"><div class="stat-icon"><i class="fas fa-chart-line"></i></div><div class="stat-value">${dados.length}</div><div class="stat-label">Total Implantações</div><div class="stat-sub">Registros ativos</div></div>
+        `;
+        
+        const tipoCount = {
+            implantacao_online: dados.filter(i=>i.tipo==="implantacao_online").length,
+            implantacao_presencial: dados.filter(i=>i.tipo==="implantacao_presencial").length,
+            upsell_online: dados.filter(i=>i.tipo==="upsell_online").length,
+            upsell_presencial: dados.filter(i=>i.tipo==="upsell_presencial").length
+        };
+        
+        const statusCount = {
+            Pago: dados.filter(i=>i.pago==="Sim").length,
+            Pendente: dados.filter(i=>i.pago==="Pendente").length,
+            NaoPago: dados.filter(i=>i.pago==="Não").length
+        };
+        
+        const qualCount = {
+            Sim: dados.filter(i=>i.qualificado==="Sim").length,
+            Nao: dados.filter(i=>i.qualificado==="Não").length
+        };
+        
+        let chartsHtml = `
+            <div class="chart-card"><h3><i class="fas fa-chart-pie"></i> Tipos de Implantação</h3><div class="chart-container"><canvas id="chartTipos"></canvas></div></div>
+            <div class="chart-card"><h3><i class="fas fa-chart-pie"></i> Status de Pagamento</h3><div class="chart-container"><canvas id="chartStatus"></canvas></div></div>
+            <div class="chart-card"><h3><i class="fas fa-chart-pie"></i> Qualificação</h3><div class="chart-container"><canvas id="chartQualif"></canvas></div></div>
+        `;
+        
+        if(isGestor) {
+            const comissaoPorConsultor = {};
+            dados.forEach(i => { comissaoPorConsultor[i.consultor] = (comissaoPorConsultor[i.consultor]||0) + calcularComissao(i.valor,i.tipo); });
+            const faturamentoPorConsultor = {};
+            dados.forEach(i => { faturamentoPorConsultor[i.consultor] = (faturamentoPorConsultor[i.consultor]||0) + i.valor; });
+            const qualificadosPorConsultor = {};
+            dados.forEach(i => { if(i.qualificado === "Sim") qualificadosPorConsultor[i.consultor] = (qualificadosPorConsultor[i.consultor]||0) + 1; });
+            
+            chartsHtml += `
+                <div class="chart-card"><h3><i class="fas fa-chart-bar"></i> Comissão por Consultor</h3><div class="chart-container"><canvas id="chartComissoes"></canvas></div></div>
+                <div class="chart-card"><h3><i class="fas fa-chart-bar"></i> Faturamento por Consultor</h3><div class="chart-container"><canvas id="chartFaturamento"></canvas></div></div>
+                <div class="chart-card"><h3><i class="fas fa-chart-bar"></i> Qualificados por Consultor</h3><div class="chart-container"><canvas id="chartQualificadosConsultor"></canvas></div></div>
+            `;
+            document.getElementById('chartsGrid').innerHTML = chartsHtml;
+            
+            if(charts.comissoes) charts.comissoes.destroy();
+            charts.comissoes = new Chart(document.getElementById('chartComissoes'), { type:'bar', data:{ labels:Object.keys(comissaoPorConsultor), datasets:[{ label:'Comissão (R$)', data:Object.values(comissaoPorConsultor), backgroundColor:'#1e90ff', borderRadius:8 }] }, options:{ responsive:true, maintainAspectRatio:true } });
+            
+            if(charts.faturamento) charts.faturamento.destroy();
+            charts.faturamento = new Chart(document.getElementById('chartFaturamento'), { type:'bar', data:{ labels:Object.keys(faturamentoPorConsultor), datasets:[{ label:'Faturamento (R$)', data:Object.values(faturamentoPorConsultor), backgroundColor:'#00b894', borderRadius:8 }] }, options:{ responsive:true, maintainAspectRatio:true } });
+            
+            if(charts.qualifConsultor) charts.qualifConsultor.destroy();
+            charts.qualifConsultor = new Chart(document.getElementById('chartQualificadosConsultor'), { type:'bar', data:{ labels:Object.keys(qualificadosPorConsultor), datasets:[{ label:'Qualificados', data:Object.values(qualificadosPorConsultor), backgroundColor:'#48bb78', borderRadius:8 }] }, options:{ responsive:true, maintainAspectRatio:true } });
+        } else {
+            document.getElementById('chartsGrid').innerHTML = chartsHtml;
+        }
+        
+        if(charts.tipos) charts.tipos.destroy();
+        charts.tipos = new Chart(document.getElementById('chartTipos'), { type:'doughnut', data:{ labels:['Impl Online','Impl Presencial','Upsell Online','Upsell Presencial'], datasets:[{ data:[tipoCount.implantacao_online, tipoCount.implantacao_presencial, tipoCount.upsell_online, tipoCount.upsell_presencial], backgroundColor:['#1e90ff','#9b59b6','#00b894','#e17055'] }] }, options:{ responsive:true, maintainAspectRatio:true } });
+        
+        if(charts.status) charts.status.destroy();
+        charts.status = new Chart(document.getElementById('chartStatus'), { type:'doughnut', data:{ labels:['Pago','Pendente','Não Pago'], datasets:[{ data:[statusCount.Pago,statusCount.Pendente,statusCount.NaoPago], backgroundColor:['#48bb78','#ed8936','#fc8181'] }] }, options:{ responsive:true, maintainAspectRatio:true } });
+        
+        if(charts.qualif) charts.qualif.destroy();
+        charts.qualif = new Chart(document.getElementById('chartQualif'), { type:'doughnut', data:{ labels:['Qualificado','Não Qualificado'], datasets:[{ data:[qualCount.Sim,qualCount.Nao], backgroundColor:['#48bb78','#a0aec0'] }] }, options:{ responsive:true, maintainAspectRatio:true } });
+    }
+
+    // ==================== RELATÓRIO DE COMISSÕES POR CONSULTOR ====================
+    function gerarRelatorioComissoes() {
+        const dados = getDadosFiltradosDashboard();
+        
+        // Calcular comissão por consultor
+        const comissaoPorConsultor = {};
+        const faturamentoPorConsultor = {};
+        const quantidadePorConsultor = {};
+        const qualificadosPorConsultor = {};
+        
+        dados.forEach(item => {
+            const consultor = item.consultor;
+            const comissao = calcularComissao(item.valor, item.tipo);
+            const faturamento = item.valor;
+            
+            comissaoPorConsultor[consultor] = (comissaoPorConsultor[consultor] || 0) + comissao;
+            faturamentoPorConsultor[consultor] = (faturamentoPorConsultor[consultor] || 0) + faturamento;
+            quantidadePorConsultor[consultor] = (quantidadePorConsultor[consultor] || 0) + 1;
+            if (item.qualificado === "Sim") {
+                qualificadosPorConsultor[consultor] = (qualificadosPorConsultor[consultor] || 0) + 1;
+            }
+        });
+        
+        const totalComissaoGeral = Object.values(comissaoPorConsultor).reduce((a,b)=>a+b,0);
+        const totalFaturamentoGeral = Object.values(faturamentoPorConsultor).reduce((a,b)=>a+b,0);
+        const totalImplantacoes = dados.length;
+        
+        // Montar cards do relatório
+        let cardsHtml = '';
+        const consultores = Object.keys(comissaoPorConsultor).sort();
+        
+        consultores.forEach(consultor => {
+            const comissao = comissaoPorConsultor[consultor] || 0;
+            const faturamento = faturamentoPorConsultor[consultor] || 0;
+            const quantidade = quantidadePorConsultor[consultor] || 0;
+            const qualificados = qualificadosPorConsultor[consultor] || 0;
+            const percQualif = quantidade ? (qualificados / quantidade * 100).toFixed(0) : 0;
+            const percComissao = faturamento ? ((comissao / faturamento) * 100).toFixed(1) : 0;
+            
+            cardsHtml += `
+                <div style="background: #f8fcff; border-radius: 16px; padding: 15px; border: 1px solid #e0f0ff;">
+                    <div style="font-size: 15px; font-weight: 700; color: #1e6ab3; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-user-circle"></i> ${consultor}
                     </div>
-                    <div class="resumo-card">
-                        <div class="resumo-valor">R$ ${totalFaturamentoGeral.toFixed(2)}</div>
-                        <div class="resumo-label">Faturamento Total</div>
+                    <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e0f0ff;">
+                        <span style="font-size: 12px; color: #4a5568;">💰 Faturamento:</span>
+                        <span style="font-weight: 700; color: #1e6ab3;">R$ ${faturamento.toFixed(2)}</span>
                     </div>
-                    <div class="resumo-card">
-                        <div class="resumo-valor">R$ ${totalComissaoGeral.toFixed(2)}</div>
-                        <div class="resumo-label">Total de Comissões</div>
+                    <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e0f0ff;">
+                        <span style="font-size: 12px; color: #4a5568;">📊 Comissão:</span>
+                        <span style="font-weight: 700; color: #1e6ab3;">R$ ${comissao.toFixed(2)}</span>
                     </div>
-                    <div class="resumo-card">
-                        <div class="resumo-valor">${totalFaturamentoGeral ? ((totalComissaoGeral / totalFaturamentoGeral) * 100).toFixed(1) : 0}%</div>
-                        <div class="resumo-label">% Comissão sobre Faturamento</div>
+                    <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e0f0ff;">
+                        <span style="font-size: 12px; color: #4a5568;">📦 Implantações:</span>
+                        <span style="font-weight: 700; color: #1e6ab3;">${quantidade}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e0f0ff;">
+                        <span style="font-size: 12px; color: #4a5568;">✅ Qualificados:</span>
+                        <span style="font-weight: 700; color: #1e6ab3;">${qualificados} (${percQualif}%)</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 2px solid #1e90ff;">
+                        <span style="font-weight: 700; font-size: 13px;">📈 % Comissão:</span>
+                        <span style="font-weight: 800; font-size: 14px; color: #1e90ff;">${percComissao}%</span>
                     </div>
                 </div>
-            </div>
-            
-            <div class="section">
-                <h2>👥 Comissões por Consultor</h2>
-                <div class="cards-grid">
-                    ${cardsHtml}
+            `;
+        });
+        
+        // Montar tabela de lançamentos
+        let tabelaLancamentos = '<table style="width:100%; border-collapse: collapse; font-size: 10px; margin-top: 15px;">';
+        tabelaLancamentos += '<thead><tr style="background: #1e90ff; color: white;">';
+        tabelaLancamentos += '<th style="padding: 8px; border: 1px solid #ddd;">Consultor</th>';
+        tabelaLancamentos += '<th style="padding: 8px; border: 1px solid #ddd;">Cliente</th>';
+        tabelaLancamentos += '<th style="padding: 8px; border: 1px solid #ddd;">Valor</th>';
+        tabelaLancamentos += '<th style="padding: 8px; border: 1px solid #ddd;">Tipo</th>';
+        tabelaLancamentos += '<th style="padding: 8px; border: 1px solid #ddd;">Comissão</th>';
+        tabelaLancamentos += '<th style="padding: 8px; border: 1px solid #ddd;">Qualificado</th>';
+        tabelaLancamentos += '<th style="padding: 8px; border: 1px solid #ddd;">Status</th>';
+        tabelaLancamentos += '</tr></thead><tbody>';
+        
+        dados.slice(0, 20).forEach(item => {
+            const tipoTexto = item.tipo === 'implantacao_online' ? '🌐 Online' : item.tipo === 'implantacao_presencial' ? '🏢 Presencial' : item.tipo === 'upsell_online' ? '⬆️ Upsell Online' : '🏢⬆️ Upsell Presencial';
+            const statusTexto = item.pago === 'Sim' ? '💰 Pago' : item.pago === 'Pendente' ? '⏰ Pendente' : '❌ Não pago';
+            tabelaLancamentos += `<tr>`;
+            tabelaLancamentos += `<td style="padding: 6px; border: 1px solid #ddd;">${item.consultor}</td>`;
+            tabelaLancamentos += `<td style="padding: 6px; border: 1px solid #ddd;">${item.cliente}</td>`;
+            tabelaLancamentos += `<td style="padding: 6px; border: 1px solid #ddd;">R$ ${item.valor.toFixed(2)}</td>`;
+            tabelaLancamentos += `<td style="padding: 6px; border: 1px solid #ddd;">${tipoTexto}</td>`;
+            tabelaLancamentos += `<td style="padding: 6px; border: 1px solid #ddd;">R$ ${calcularComissao(item.valor, item.tipo).toFixed(2)}</td>`;
+            tabelaLancamentos += `<td style="padding: 6px; border: 1px solid #ddd;">${item.qualificado === 'Sim' ? '✅ Sim' : '❌ Não'}</td>`;
+            tabelaLancamentos += `<td style="padding: 6px; border: 1px solid #ddd;">${statusTexto}</td>`;
+            tabelaLancamentos += `</tr>`;
+        });
+        
+        if(dados.length > 20) {
+            tabelaLancamentos += `<tr><td colspan="7" style="text-align: center; padding: 8px;"><strong>... e mais ${dados.length - 20} registros</strong></td></tr>`;
+        }
+        tabelaLancamentos += '</tbody></table>';
+        
+        // HTML completo do relatório
+        const relatorioHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Relatório de Comissões por Consultor</title>
+                <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body {
+                        font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+                        padding: 30px;
+                        background: white;
+                    }
+                    .header {
+                        text-align: center;
+                        margin-bottom: 25px;
+                        padding-bottom: 15px;
+                        border-bottom: 2px solid #1e90ff;
+                    }
+                    .header h1 { color: #1e6ab3; font-size: 22px; margin-bottom: 5px; }
+                    .header p { color: #718096; font-size: 11px; margin: 3px 0; }
+                    .section { margin-bottom: 25px; }
+                    .section h2 { color: #1e6ab3; font-size: 16px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0; }
+                    .resumo-grid {
+                        display: grid;
+                        grid-template-columns: repeat(4, 1fr);
+                        gap: 15px;
+                        margin-bottom: 20px;
+                    }
+                    .resumo-card {
+                        text-align: center;
+                        padding: 15px;
+                        background: #f8fcff;
+                        border-radius: 12px;
+                        border: 1px solid #e0f0ff;
+                    }
+                    .resumo-valor { font-size: 22px; font-weight: 800; color: #1e6ab3; }
+                    .resumo-label { font-size: 11px; color: #718096; margin-top: 5px; }
+                    .cards-grid {
+                        display: grid;
+                        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+                        gap: 16px;
+                        margin-top: 15px;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 15px;
+                    }
+                    th {
+                        background: #1e90ff;
+                        color: white;
+                        padding: 8px;
+                        border: 1px solid #ddd;
+                        text-align: left;
+                        font-size: 11px;
+                    }
+                    td {
+                        padding: 6px;
+                        border: 1px solid #ddd;
+                        font-size: 10px;
+                    }
+                    .footer {
+                        margin-top: 25px;
+                        padding-top: 12px;
+                        border-top: 1px solid #e2e8f0;
+                        text-align: center;
+                        font-size: 9px;
+                        color: #a0aec0;
+                    }
+                    @media print {
+                        body { padding: 15px; }
+                        button { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1><i class="fas fa-chart-line"></i> Relatório de Comissões por Consultor</h1>
+                    <p>Sistema de Implantações</p>
+                    <p>Gerado em: ${new Date().toLocaleString('pt-BR')}</p>
+                    <p>Usuário: ${currentUser} ${isGestor ? '(Gestor)' : '(Consultor)'}</p>
                 </div>
-            </div>
-            
-            <div class="section">
-                <h2>📋 Lançamentos (Últimos 20)</h2>
-                ${tabelaLancamentos}
-                ${dados.length > 20 ? '<p style="font-size: 10px; margin-top: 8px; text-align: center;">* Utilize a exportação Excel para visualizar todos os registros.</p>' : ''}
-            </div>
-            
-            <div class="footer">
-                <p>Relatório gerado automaticamente pelo Sistema de Implantações</p>
-                <p>Documento emitido eletronicamente - ${new Date().toLocaleString('pt-BR')}</p>
-            </div>
-            
-            <div style="text-align: center; margin-top: 20px;">
-                <button onclick="window.print()" style="background: #1e90ff; color: white; border: none; padding: 10px 20px; border-radius: 30px; cursor: pointer; font-weight: 600;">
-                    🖨️ Imprimir Relatório
-                </button>
-                <button onclick="window.close()" style="background: #fc8181; color: white; border: none; padding: 10px 20px; border-radius: 30px; cursor: pointer; font-weight: 600; margin-left: 10px;">
-                    ❌ Fechar
-                </button>
-            </div>
-        </body>
-        </html>
-    `;
+                
+                <div class="section">
+                    <h2>📊 Resumo Geral</h2>
+                    <div class="resumo-grid">
+                        <div class="resumo-card">
+                            <div class="resumo-valor">${totalImplantacoes}</div>
+                            <div class="resumo-label">Total de Implantações</div>
+                        </div>
+                        <div class="resumo-card">
+                            <div class="resumo-valor">R$ ${totalFaturamentoGeral.toFixed(2)}</div>
+                            <div class="resumo-label">Faturamento Total</div>
+                        </div>
+                        <div class="resumo-card">
+                            <div class="resumo-valor">R$ ${totalComissaoGeral.toFixed(2)}</div>
+                            <div class="resumo-label">Total de Comissões</div>
+                        </div>
+                        <div class="resumo-card">
+                            <div class="resumo-valor">${totalFaturamentoGeral ? ((totalComissaoGeral / totalFaturamentoGeral) * 100).toFixed(1) : 0}%</div>
+                            <div class="resumo-label">% Comissão sobre Faturamento</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>👥 Comissões por Consultor</h2>
+                    <div class="cards-grid">
+                        ${cardsHtml}
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>📋 Lançamentos (Últimos 20)</h2>
+                    ${tabelaLancamentos}
+                    ${dados.length > 20 ? '<p style="font-size: 10px; margin-top: 8px; text-align: center;">* Utilize a exportação Excel para visualizar todos os registros.</p>' : ''}
+                </div>
+                
+                <div class="footer">
+                    <p>Relatório gerado automaticamente pelo Sistema de Implantações</p>
+                    <p>Documento emitido eletronicamente - ${new Date().toLocaleString('pt-BR')}</p>
+                </div>
+                
+                <div style="text-align: center; margin-top: 20px;">
+                    <button onclick="window.print()" style="background: #1e90ff; color: white; border: none; padding: 10px 20px; border-radius: 30px; cursor: pointer; font-weight: 600;">
+                        🖨️ Imprimir Relatório
+                    </button>
+                    <button onclick="window.close()" style="background: #fc8181; color: white; border: none; padding: 10px 20px; border-radius: 30px; cursor: pointer; font-weight: 600; margin-left: 10px;">
+                        ❌ Fechar
+                    </button>
+                </div>
+            </body>
+            </html>
+        `;
+        
+        // Abrir em nova janela
+        const win = window.open('', '_blank');
+        win.document.write(relatorioHtml);
+        win.document.close();
+    }
+
+    // ==================== EXPORTAÇÃO EXCEL ====================
+    function exportarExcel() {
+        const dados = getDadosFiltradosLancamentos();
+        
+        const planilhaDados = dados.map(item => ({
+            'Consultor': item.consultor,
+            'Cliente': item.cliente,
+            'CNPJ': item.cnpj,
+            'Data Início': item.dataInicio,
+            'Data Fim': item.dataFim,
+            'Data Prevista': item.dataPrevista,
+            'Observação': item.observacao,
+            'Valor (R$)': item.valor,
+            'Tipo': item.tipo === 'implantacao_online' ? 'Implantação Online' : item.tipo === 'implantacao_presencial' ? 'Implantação Presencial' : item.tipo === 'upsell_online' ? 'Upsell Online' : 'Upsell Presencial',
+            'Imposto (16%)': calcularImposto(item.valor),
+            'Comissão (R$)': calcularComissao(item.valor, item.tipo),
+            'Valor Líquido (R$)': calcularValorLiquido(item.valor, item.tipo),
+            'Qualificado': item.qualificado,
+            'Status Pagamento': item.pago
+        }));
+        
+        const totalVendas = dados.reduce((s,i)=>s+i.valor,0);
+        const totalImposto = dados.reduce((s,i)=>s+calcularImposto(i.valor),0);
+        const totalComissao = dados.reduce((s,i)=>s+calcularComissao(i.valor,i.tipo),0);
+        const totalLiquido = dados.reduce((s,i)=>s+calcularValorLiquido(i.valor,i.tipo),0);
+        
+        const resumoDRE = [
+            { 'RESUMO DRE': '', 'VALOR (R$)': '' },
+            { 'RESUMO DRE': '1. RECEITA BRUTA TOTAL', 'VALOR (R$)': totalVendas },
+            { 'RESUMO DRE': '2. IMPOSTOS (16%)', 'VALOR (R$)': -totalImposto },
+            { 'RESUMO DRE': '3. RECEITA LÍQUIDA', 'VALOR (R$)': totalVendas - totalImposto },
+            { 'RESUMO DRE': '4. COMISSÕES PAGAS', 'VALOR (R$)': -totalComissao },
+            { 'RESUMO DRE': '5. RESULTADO LÍQUIDO FINAL', 'VALOR (R$)': totalLiquido }
+        ];
+        
+        // Adicionar comissão por consultor
+        const comissaoPorConsultor = {};
+        dados.forEach(i => { comissaoPorConsultor[i.consultor] = (comissaoPorConsultor[i.consultor]||0) + calcularComissao(i.valor,i.tipo); });
+        const resumoConsultores = Object.entries(comissaoPorConsultor).map(([nome, valor]) => ({ 'CONSULTOR': nome, 'COMISSÃO (R$)': valor }));
+        
+        const wsDados = XLSX.utils.json_to_sheet(planilhaDados);
+        const wsResumo = XLSX.utils.json_to_sheet(resumoDRE);
+        const wsConsultores = XLSX.utils.json_to_sheet(resumoConsultores);
+        
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, wsDados, 'Lançamentos');
+        XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo DRE');
+        XLSX.utils.book_append_sheet(wb, wsConsultores, 'Comissão por Consultor');
+        
+        const nomeArquivo = `implantacoes_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.xlsx`;
+        XLSX.writeFile(wb, nomeArquivo);
+    }
     
-    // Abrir em nova janela
-    const win = window.open('', '_blank');
-    win.document.write(relatorioHtml);
-    win.document.close();
-}
+    // ==================== EXPORTAÇÃO PDF ====================
+    function exportarPDF() {
+        const dados = getDadosFiltradosLancamentos();
+        
+        const totalVendas = dados.reduce((s,i)=>s+i.valor,0);
+        const totalImposto = dados.reduce((s,i)=>s+calcularImposto(i.valor),0);
+        const totalComissao = dados.reduce((s,i)=>s+calcularComissao(i.valor,i.tipo),0);
+        const totalLiquido = dados.reduce((s,i)=>s+calcularValorLiquido(i.valor,i.tipo),0);
+        const totalQualificados = dados.filter(i=>i.qualificado==="Sim").length;
+        const percQualif = dados.length ? (totalQualificados/dados.length)*100 : 0;
+        const totalPagos = dados.filter(i=>i.pago==="Sim").length;
+        const percPago = dados.length ? (totalPagos/dados.length)*100 : 0;
+        
+        const tipoCount = {
+            implantacao_online: dados.filter(i=>i.tipo==="implantacao_online").length,
+            implantacao_presencial: dados.filter(i=>i.tipo==="implantacao_presencial").length,
+            upsell_online: dados.filter(i=>i.tipo==="upsell_online").length,
+            upsell_presencial: dados.filter(i=>i.tipo==="upsell_presencial").length
+        };
+        
+        // Calcular comissão por consultor
+        const comissaoPorConsultor = {};
+        dados.forEach(i => { comissaoPorConsultor[i.consultor] = (comissaoPorConsultor[i.consultor]||0) + calcularComissao(i.valor,i.tipo); });
+        
+        let tabelaComissaoHtml = '<table style="width:100%; border-collapse: collapse; margin-top: 10px; font-size: 10px;">';
+        tabelaComissaoHtml += '<thead><tr style="background: #1e90ff; color: white;"><th style="padding: 6px; border: 1px solid #ddd;">Consultor</th><th style="padding: 6px; border: 1px solid #ddd;">Comissão (R$)</th><tr></thead><tbody>';
+        for (const [consultor, valor] of Object.entries(comissaoPorConsultor)) {
+            tabelaComissaoHtml += `<tr><td style="padding: 4px; border: 1px solid #ddd;">${consultor}</td><td style="padding: 4px; border: 1px solid #ddd;">R$ ${valor.toFixed(2)}</td></tr>`;
+        }
+        tabelaComissaoHtml += '</tbody></table>';
+        
+        // Montar tabela HTML
+        let tabelaHtml = '<table style="width:100%; border-collapse: collapse; font-size: 9px;">';
+        tabelaHtml += '<thead><tr style="background: #1e90ff; color: white;">';
+        tabelaHtml += '<th style="padding: 5px; border: 1px solid #ddd;">Consultor</th>';
+        tabelaHtml += '<th style="padding: 5px; border: 1px solid #ddd;">Cliente</th>';
+        tabelaHtml += '<th style="padding: 5px; border: 1px solid #ddd;">Valor</th>';
+        tabelaHtml += '<th style="padding: 5px; border: 1px solid #ddd;">Comissão</th>';
+        tabelaHtml += '<th style="padding: 5px; border: 1px solid #ddd;">Qualificado</th>';
+        tabelaHtml += '<th style="padding: 5px; border: 1px solid #ddd;">Status</th>';
+        tabelaHtml += '</tr></thead><tbody>';
+        
+        dados.slice(0, 15).forEach(item => {
+            tabelaHtml += `<tr>`;
+            tabelaHtml += `<td style="padding: 4px; border: 1px solid #ddd;">${item.consultor}</td>`;
+            tabelaHtml += `<td style="padding: 4px; border: 1px solid #ddd;">${item.cliente}</td>`;
+            tabelaHtml += `<td style="padding: 4px; border: 1px solid #ddd;">R$ ${item.valor.toFixed(2)}</td>`;
+            tabelaHtml += `<td style="padding: 4px; border: 1px solid #ddd;">R$ ${calcularComissao(item.valor, item.tipo).toFixed(2)}</td>`;
+            tabelaHtml += `<td style="padding: 4px; border: 1px solid #ddd;">${item.qualificado === 'Sim' ? '✅ Sim' : '❌ Não'}</td>`;
+            tabelaHtml += `<td style="padding: 4px; border: 1px solid #ddd;">${item.pago === 'Sim' ? '💰 Pago' : item.pago === 'Pendente' ? '⏰ Pendente' : '❌ Não'}</td>`;
+            tabelaHtml += `</tr>`;
+        });
+        
+        if(dados.length > 15) {
+            tabelaHtml += `<tr><td colspan="6" style="text-align: center; padding: 6px;"><strong>... e mais ${dados.length - 15} registros. Exporte o Excel para visualizar todos.</strong></td></tr>`;
+        }
+        tabelaHtml += '</tbody></table>';
+        
+        // Montar HTML completo do relatório
+        const relatorioHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>DRE - Implantações</title>
+                <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body {
+                        font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+                        padding: 20px;
+                        background: white;
+                    }
+                    .dre-header {
+                        text-align: center;
+                        margin-bottom: 20px;
+                        padding-bottom: 12px;
+                        border-bottom: 2px solid #1e90ff;
+                    }
+                    .dre-header h1 { color: #1e6ab3; font-size: 20px; margin-bottom: 5px; }
+                    .dre-header p { color: #718096; font-size: 11px; margin: 3px 0; }
+                    .dre-section { margin-bottom: 20px; }
+                    .dre-section h3 { color: #1e6ab3; font-size: 14px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #e2e8f0; }
+                    .dre-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #f0f4fa; }
+                    .dre-row.total { font-weight: 700; margin-top: 8px; padding-top: 8px; border-top: 2px solid #1e90ff; border-bottom: none; }
+                    .dre-row.total .dre-value { color: #1e6ab3; font-size: 16px; }
+                    .dre-label { flex: 1; font-size: 12px; }
+                    .dre-value { font-weight: 500; text-align: right; font-size: 12px; }
+                    .dre-footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 9px; color: #a0aec0; }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 10px;
+                        font-size: 10px;
+                    }
+                    th {
+                        background: #1e90ff;
+                        color: white;
+                        padding: 6px;
+                        border: 1px solid #ddd;
+                        text-align: left;
+                    }
+                    td {
+                        padding: 4px;
+                        border: 1px solid #ddd;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="dre-header">
+                    <h1>DEMONSTRATIVO DE RESULTADOS (DRE)</h1>
+                    <p>Sistema de Implantações - Comissões</p>
+                    <p>Gerado em: ${new Date().toLocaleString('pt-BR')}</p>
+                    <p>Usuário: ${currentUser} ${isGestor ? '(Gestor)' : '(Consultor)'}</p>
+                </div>
+                
+                <div class="dre-section">
+                    <h3>📊 RESUMO GERAL</h3>
+                    <div class="dre-row"><span class="dre-label">Total de Implantações:</span><span class="dre-value">${dados.length}</span></div>
+                    <div class="dre-row"><span class="dre-label">Total Qualificados:</span><span class="dre-value">${totalQualificados} (${percQualif.toFixed(1)}%)</span></div>
+                    <div class="dre-row"><span class="dre-label">Total Recebido:</span><span class="dre-value">${totalPagos} (${percPago.toFixed(1)}%)</span></div>
+                </div>
+                
+                <div class="dre-section">
+                    <h3>💰 DEMONSTRATIVO DE RESULTADOS</h3>
+                    <div class="dre-row"><span class="dre-label">1. RECEITA BRUTA TOTAL</span><span class="dre-value">R$ ${totalVendas.toFixed(2)}</span></div>
+                    <div class="dre-row dre-indent" style="margin-left: 20px;"><span class="dre-label">(-) Impostos (16%)</span><span class="dre-value">R$ ${totalImposto.toFixed(2)}</span></div>
+                    <div class="dre-row"><span class="dre-label">2. RECEITA LÍQUIDA</span><span class="dre-value">R$ ${(totalVendas - totalImposto).toFixed(2)}</span></div>
+                    <div class="dre-row dre-indent" style="margin-left: 20px;"><span class="dre-label">(-) Comissões Pagas</span><span class="dre-value">R$ ${totalComissao.toFixed(2)}</span></div>
+                    <div class="dre-row total"><span class="dre-label">3. RESULTADO LÍQUIDO FINAL</span><span class="dre-value">R$ ${totalLiquido.toFixed(2)}</span></div>
+                </div>
+                
+                <div class="dre-section">
+                    <h3>📈 DISTRIBUIÇÃO POR TIPO</h3>
+                    <div class="dre-row"><span class="dre-label">🌐 Implantação Online:</span><span class="dre-value">${tipoCount.implantacao_online}</span></div>
+                    <div class="dre-row"><span class="dre-label">🏢 Implantação Presencial:</span><span class="dre-value">${tipoCount.implantacao_presencial}</span></div>
+                    <div class="dre-row"><span class="dre-label">⬆️ Upsell Online:</span><span class="dre-value">${tipoCount.upsell_online}</span></div>
+                    <div class="dre-row"><span class="dre-label">🏢⬆️ Upsell Presencial:</span><span class="dre-value">${tipoCount.upsell_presencial}</span></div>
+                </div>
+                
+                <div class="dre-section">
+                    <h3>👥 COMISSÕES POR CONSULTOR</h3>
+                    ${tabelaComissaoHtml}
+                </div>
+                
+                <div class="dre-section">
+                    <h3>📋 LISTA DE LANÇAMENTOS (Últimos 15)</h3>
+                    ${tabelaHtml}
+                </div>
+                
+                <div class="dre-footer">
+                    <p>Relatório gerado automaticamente pelo Sistema de Implantações</p>
+                    <p>Documento emitido eletronicamente - ${new Date().toLocaleString('pt-BR')}</p>
+                </div>
+            </body>
+            </html>
+        `;
+        
+        // Abrir janela popup com o relatório
+        const win = window.open('', '_blank');
+        win.document.write(relatorioHtml);
+        win.document.close();
+        
+        win.onload = function() {
+            setTimeout(() => {
+                win.print();
+            }, 500);
+        };
+    }
+
+    function salvarSessao(usuario, tipo) { sessionStorage.setItem('sessaoImplantacoes', JSON.stringify({ usuario, tipo, sessionId, timestamp: Date.now() })); }
+    function carregarSessao() { const s = sessionStorage.getItem('sessaoImplantacoes'); if(s) { try { const sess = JSON.parse(s); if(sess.sessionId === sessionId) return sess; } catch(e) {} } return null; }
+    function limparSessao() { sessionStorage.removeItem('sessaoImplantacoes'); }
+
+    async function restaurarSessao() {
+        const sessao = carregarSessao();
+        if(sessao && sessao.usuario) {
+            currentUser = sessao.usuario;
+            isGestor = sessao.tipo === "gestor";
+            await carregarDados();
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('hidden');
+            document.getElementById('currentUser').innerHTML = `<i class="fas fa-${isGestor ? 'crown' : 'user'}"></i> ${currentUser} ${isGestor ? '(Gestor)' : ''}`;
+            document.getElementById('tituloTabela').innerText = isGestor ? "Todos os Lançamentos" : "Meus Lançamentos";
+            document.getElementById('tabsContainer').innerHTML = `<button class="tab-btn" onclick="switchTab('lancamentos')"><i class="fas fa-table"></i> Lançamentos</button><button class="tab-btn active" onclick="switchTab('dashboard')"><i class="fas fa-chart-pie"></i> Dashboard</button>`;
+            
+            document.getElementById('filtroConsultorGroup').style.display = isGestor ? 'flex' : 'none';
+            document.getElementById('filtroConsultorGroupDash').style.display = isGestor ? 'flex' : 'none';
+            document.getElementById('btnTestConexao').style.display = isGestor ? 'flex' : 'none';
+            document.getElementById('btnRelatorio').style.display = isGestor ? 'flex' : 'none';
+            
+            document.getElementById('filtroConsultor').addEventListener('change', () => aplicarFiltrosLancamentos());
+            document.getElementById('filtroDataInicio').addEventListener('change', () => aplicarFiltrosLancamentos());
+            document.getElementById('filtroDataFim').addEventListener('change', () => aplicarFiltrosLancamentos());
+            document.getElementById('filtroCliente').addEventListener('keyup', () => aplicarFiltrosLancamentos());
+            document.getElementById('filtroTipo').addEventListener('change', () => aplicarFiltrosLancamentos());
+            
+            document.getElementById('filtroConsultorDash').addEventListener('change', () => aplicarFiltrosDashboard());
+            document.getElementById('filtroDataInicioDash').addEventListener('change', () => aplicarFiltrosDashboard());
+            document.getElementById('filtroDataFimDash').addEventListener('change', () => aplicarFiltrosDashboard());
+            document.getElementById('filtroClienteDash').addEventListener('keyup', () => aplicarFiltrosDashboard());
+            document.getElementById('filtroQualificadoDash').addEventListener('change', () => aplicarFiltrosDashboard());
+            document.getElementById('filtroStatusDash').addEventListener('change', () => aplicarFiltrosDashboard());
+            document.getElementById('filtroTipoDash').addEventListener('change', () => aplicarFiltrosDashboard());
+            
+            aplicarFiltrosLancamentos();
+            aplicarFiltrosDashboard();
+            
+            document.getElementById('tab-lancamentos').classList.remove('active');
+            document.getElementById('tab-dashboard').classList.add('active');
+            resetarTimeout();
+            return true;
+        }
+        return false;
+    }
+
+    async function fazerLogin() {
+        const user = document.getElementById('userSelect').value;
+        const pass = document.getElementById('passwordInput').value;
+        const err = document.getElementById('errorMessage');
+        if(!user) { err.style.display = 'block'; err.innerHTML = 'Selecione um usuário'; return; }
+        const usuario = usuarios[user];
+        if(!usuario || usuario.senha !== pass) { err.style.display = 'block'; err.innerHTML = 'Usuário ou senha incorretos'; return; }
+        err.style.display = 'none';
+        currentUser = user;
+        isGestor = usuario.tipo === "gestor";
+        salvarSessao(currentUser, usuario.tipo);
+        await carregarDados();
+        document.getElementById('loginScreen').classList.add('hidden');
+        document.getElementById('mainApp').classList.remove('hidden');
+        document.getElementById('currentUser').innerHTML = `<i class="fas fa-${isGestor ? 'crown' : 'user'}"></i> ${currentUser} ${isGestor ? '(Gestor)' : ''}`;
+        document.getElementById('tituloTabela').innerText = isGestor ? "Todos os Lançamentos" : "Meus Lançamentos";
+        document.getElementById('tabsContainer').innerHTML = `<button class="tab-btn" onclick="switchTab('lancamentos')"><i class="fas fa-table"></i> Lançamentos</button><button class="tab-btn active" onclick="switchTab('dashboard')"><i class="fas fa-chart-pie"></i> Dashboard</button>`;
+        
+        document.getElementById('filtroConsultorGroup').style.display = isGestor ? 'flex' : 'none';
+        document.getElementById('filtroConsultorGroupDash').style.display = isGestor ? 'flex' : 'none';
+        document.getElementById('btnTestConexao').style.display = isGestor ? 'flex' : 'none';
+        document.getElementById('btnRelatorio').style.display = isGestor ? 'flex' : 'none';
+        
+        document.getElementById('filtroConsultor').addEventListener('change', () => aplicarFiltrosLancamentos());
+        document.getElementById('filtroDataInicio').addEventListener('change', () => aplicarFiltrosLancamentos());
+        document.getElementById('filtroDataFim').addEventListener('change', () => aplicarFiltrosLancamentos());
+        document.getElementById('filtroCliente').addEventListener('keyup', () => aplicarFiltrosLancamentos());
+        document.getElementById('filtroTipo').addEventListener('change', () => aplicarFiltrosLancamentos());
+        
+        document.getElementById('filtroConsultorDash').addEventListener('change', () => aplicarFiltrosDashboard());
+        document.getElementById('filtroDataInicioDash').addEventListener('change', () => aplicarFiltrosDashboard());
+        document.getElementById('filtroDataFimDash').addEventListener('change', () => aplicarFiltrosDashboard());
+        document.getElementById('filtroClienteDash').addEventListener('keyup', () => aplicarFiltrosDashboard());
+        document.getElementById('filtroQualificadoDash').addEventListener('change', () => aplicarFiltrosDashboard());
+        document.getElementById('filtroStatusDash').addEventListener('change', () => aplicarFiltrosDashboard());
+        document.getElementById('filtroTipoDash').addEventListener('change', () => aplicarFiltrosDashboard());
+        
+        aplicarFiltrosLancamentos();
+        aplicarFiltrosDashboard();
+        
+        document.getElementById('tab-lancamentos').classList.remove('active');
+        document.getElementById('tab-dashboard').classList.add('active');
+        resetarTimeout();
+    }
+
+    function switchTab(tab) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.getElementById(`tab-${tab}`).classList.add('active');
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+        if(tab === 'dashboard') {
+            setTimeout(() => aplicarFiltrosDashboard(), 100);
+        }
+    }
+
+    function logout() {
+        if(timeoutTimer) clearTimeout(timeoutTimer);
+        if(countdownTimer) clearInterval(countdownTimer);
+        limparSessao();
+        currentUser = null;
+        isGestor = false;
+        document.getElementById('loginScreen').classList.remove('hidden');
+        document.getElementById('mainApp').classList.add('hidden');
+        document.getElementById('passwordInput').value = '';
+        document.getElementById('userSelect').value = '';
+    }
+
+    window.addEventListener('storage', e => { if(e.key === 'sessaoImplantacoes' && currentUser) { alert("Sessão encerrada por login em outra aba."); logout(); } });
+    document.addEventListener('DOMContentLoaded', () => restaurarSessao());
+    document.getElementById('passwordInput').addEventListener('keypress', e => { if(e.key === 'Enter') fazerLogin(); });
+</script>
+</body>
+</html>

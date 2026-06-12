@@ -8,7 +8,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
@@ -39,6 +38,7 @@
         .btn-test-db { background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); color: white; border: none; padding: 6px 14px; border-radius: 40px; cursor: pointer; font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px; }
         .btn-export { background: linear-gradient(135deg, #e17055 0%, #d63031 100%); color: white; border: none; padding: 6px 14px; border-radius: 40px; cursor: pointer; font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px; }
         .btn-export-excel { background: linear-gradient(135deg, #00b894 0%, #019874 100%); color: white; border: none; padding: 6px 14px; border-radius: 40px; cursor: pointer; font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+        .btn-relatorio { background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); color: white; border: none; padding: 6px 14px; border-radius: 40px; cursor: pointer; font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px; }
 
         .login-container {
             display: flex; justify-content: center; align-items: center; min-height: 100vh;
@@ -109,6 +109,35 @@
         .total-icon i { font-size: 16px; color: #1e90ff; }
         .total-value { font-size: 18px; font-weight: 800; color: #1e6ab3; }
         .total-label { font-size: 10px; color: #718096; }
+
+        /* Relatório de Comissões por Consultor */
+        .comissao-container {
+            background: white; border-radius: 20px; padding: 20px; margin-bottom: 20px;
+            border: 1px solid rgba(30,144,255,0.15);
+        }
+        .comissao-title {
+            font-size: 16px; font-weight: 700; color: #1e6ab3; margin-bottom: 15px;
+            display: flex; align-items: center; gap: 10px; border-bottom: 2px solid #1e90ff; padding-bottom: 10px;
+        }
+        .comissao-grid {
+            display: grid; grid-template-columns: 1fr; gap: 15px;
+        }
+        @media (min-width: 640px) { .comissao-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (min-width: 1024px) { .comissao-grid { grid-template-columns: repeat(3, 1fr); } }
+        .comissao-card {
+            background: #f8fcff; border-radius: 16px; padding: 15px;
+            border: 1px solid #e0f0ff; transition: 0.3s;
+        }
+        .comissao-card:hover { transform: translateY(-3px); box-shadow: 0 4px 12px rgba(30,144,255,0.1); }
+        .comissao-consultor { font-size: 15px; font-weight: 700; color: #1e6ab3; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+        .comissao-consultor i { font-size: 18px; }
+        .comissao-detalhe { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e0f0ff; }
+        .comissao-detalhe:last-child { border-bottom: none; }
+        .comissao-label { font-size: 12px; color: #4a5568; }
+        .comissao-valor { font-weight: 700; color: #1e6ab3; font-size: 14px; }
+        .comissao-total { margin-top: 10px; padding-top: 8px; border-top: 2px solid #1e90ff; display: flex; justify-content: space-between; }
+        .comissao-total .label { font-weight: 700; font-size: 13px; }
+        .comissao-total .valor { font-weight: 800; font-size: 16px; color: #1e90ff; }
 
         .dashboard-stats {
             display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 24px;
@@ -193,8 +222,9 @@
             <i class="fas fa-user-circle"></i> <span id="currentUser"></span>
             <span class="timer-info" id="timerDisplay"><i class="fas fa-hourglass-half"></i> 60:00</span>
             <button class="btn-test-db" id="btnTestConexao" onclick="testarConexaoFirebase()" style="display: none;"><i class="fas fa-database"></i> Testar</button>
-            <button class="btn-export" onclick="exportarPDF()"><i class="fas fa-file-pdf"></i> Exportar PDF</button>
-            <button class="btn-export-excel" onclick="exportarExcel()"><i class="fas fa-file-excel"></i> Exportar Excel</button>
+            <button class="btn-relatorio" id="btnRelatorio" onclick="gerarRelatorioComissoes()" style="display: none;"><i class="fas fa-chart-simple"></i> Relatório</button>
+            <button class="btn-export" onclick="exportarPDF()"><i class="fas fa-file-pdf"></i> PDF</button>
+            <button class="btn-export-excel" onclick="exportarExcel()"><i class="fas fa-file-excel"></i> Excel</button>
             <button class="logout-btn" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Sair</button>
         </div>
     </div>
@@ -600,6 +630,133 @@
         charts.qualif = new Chart(document.getElementById('chartQualif'), { type:'doughnut', data:{ labels:['Qualificado','Não Qualificado'], datasets:[{ data:[qualCount.Sim,qualCount.Nao], backgroundColor:['#48bb78','#a0aec0'] }] }, options:{ responsive:true, maintainAspectRatio:true } });
     }
 
+    // ==================== RELATÓRIO DE COMISSÕES POR CONSULTOR ====================
+    function gerarRelatorioComissoes() {
+        const dados = getDadosFiltradosDashboard();
+        
+        // Calcular comissão por consultor
+        const comissaoPorConsultor = {};
+        const faturamentoPorConsultor = {};
+        const quantidadePorConsultor = {};
+        const qualificadosPorConsultor = {};
+        
+        dados.forEach(item => {
+            const consultor = item.consultor;
+            const comissao = calcularComissao(item.valor, item.tipo);
+            const faturamento = item.valor;
+            
+            comissaoPorConsultor[consultor] = (comissaoPorConsultor[consultor] || 0) + comissao;
+            faturamentoPorConsultor[consultor] = (faturamentoPorConsultor[consultor] || 0) + faturamento;
+            quantidadePorConsultor[consultor] = (quantidadePorConsultor[consultor] || 0) + 1;
+            if (item.qualificado === "Sim") {
+                qualificadosPorConsultor[consultor] = (qualificadosPorConsultor[consultor] || 0) + 1;
+            }
+        });
+        
+        const totalComissaoGeral = Object.values(comissaoPorConsultor).reduce((a,b)=>a+b,0);
+        const totalFaturamentoGeral = Object.values(faturamentoPorConsultor).reduce((a,b)=>a+b,0);
+        const totalImplantacoes = dados.length;
+        
+        // Montar HTML do relatório
+        let cardsHtml = '';
+        const consultores = Object.keys(comissaoPorConsultor).sort();
+        
+        consultores.forEach(consultor => {
+            const comissao = comissaoPorConsultor[consultor] || 0;
+            const faturamento = faturamentoPorConsultor[consultor] || 0;
+            const quantidade = quantidadePorConsultor[consultor] || 0;
+            const qualificados = qualificadosPorConsultor[consultor] || 0;
+            const percQualif = quantidade ? (qualificados / quantidade * 100).toFixed(0) : 0;
+            
+            cardsHtml += `
+                <div class="comissao-card">
+                    <div class="comissao-consultor">
+                        <i class="fas fa-user-circle"></i> ${consultor}
+                    </div>
+                    <div class="comissao-detalhe">
+                        <span class="comissao-label">💰 Faturamento:</span>
+                        <span class="comissao-valor">R$ ${faturamento.toFixed(2)}</span>
+                    </div>
+                    <div class="comissao-detalhe">
+                        <span class="comissao-label">📊 Comissão:</span>
+                        <span class="comissao-valor">R$ ${comissao.toFixed(2)}</span>
+                    </div>
+                    <div class="comissao-detalhe">
+                        <span class="comissao-label">📦 Implantações:</span>
+                        <span class="comissao-valor">${quantidade}</span>
+                    </div>
+                    <div class="comissao-detalhe">
+                        <span class="comissao-label">✅ Qualificados:</span>
+                        <span class="comissao-valor">${qualificados} (${percQualif}%)</span>
+                    </div>
+                    <div class="comissao-total">
+                        <span class="label">📈 % Comissão sobre faturamento:</span>
+                        <span class="valor">${faturamento ? ((comissao / faturamento) * 100).toFixed(1) : 0}%</span>
+                    </div>
+                </div>
+            `;
+        });
+        
+        // Criar modal com o relatório
+        const modal = document.createElement('div');
+        modal.style.position = 'fixed';
+        modal.style.top = '0';
+        modal.style.left = '0';
+        modal.style.width = '100%';
+        modal.style.height = '100%';
+        modal.style.backgroundColor = 'rgba(0,0,0,0.7)';
+        modal.style.zIndex = '10001';
+        modal.style.display = 'flex';
+        modal.style.justifyContent = 'center';
+        modal.style.alignItems = 'center';
+        modal.style.padding = '20px';
+        
+        modal.innerHTML = `
+            <div style="background: white; border-radius: 24px; max-width: 1000px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #1e90ff; padding-bottom: 15px;">
+                    <h2 style="color: #1e6ab3;"><i class="fas fa-chart-line"></i> Relatório de Comissões por Consultor</h2>
+                    <button onclick="this.closest('div').parentElement.remove()" style="background: #fc8181; color: white; border: none; padding: 8px 16px; border-radius: 12px; cursor: pointer;">Fechar</button>
+                </div>
+                
+                <div style="background: #f8fcff; border-radius: 16px; padding: 20px; margin-bottom: 20px;">
+                    <h3 style="color: #1e6ab3; margin-bottom: 15px;"><i class="fas fa-chart-simple"></i> Resumo Geral</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                        <div style="text-align: center; padding: 15px; background: white; border-radius: 12px;">
+                            <div style="font-size: 24px; font-weight: 800; color: #1e6ab3;">${totalImplantacoes}</div>
+                            <div style="font-size: 12px; color: #718096;">Total de Implantações</div>
+                        </div>
+                        <div style="text-align: center; padding: 15px; background: white; border-radius: 12px;">
+                            <div style="font-size: 24px; font-weight: 800; color: #1e6ab3;">R$ ${totalFaturamentoGeral.toFixed(2)}</div>
+                            <div style="font-size: 12px; color: #718096;">Faturamento Total</div>
+                        </div>
+                        <div style="text-align: center; padding: 15px; background: white; border-radius: 12px;">
+                            <div style="font-size: 24px; font-weight: 800; color: #1e6ab3;">R$ ${totalComissaoGeral.toFixed(2)}</div>
+                            <div style="font-size: 12px; color: #718096;">Total de Comissões</div>
+                        </div>
+                        <div style="text-align: center; padding: 15px; background: white; border-radius: 12px;">
+                            <div style="font-size: 24px; font-weight: 800; color: #1e6ab3;">${totalFaturamentoGeral ? ((totalComissaoGeral / totalFaturamentoGeral) * 100).toFixed(1) : 0}%</div>
+                            <div style="font-size: 12px; color: #718096;">% Comissão sobre Faturamento</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="comissao-container" style="margin-bottom: 0;">
+                    <div class="comissao-title"><i class="fas fa-users"></i> Comissões por Consultor</div>
+                    <div class="comissao-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+                        ${cardsHtml}
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #a0aec0;">
+                    <p>Relatório gerado em ${new Date().toLocaleString('pt-BR')}</p>
+                    <p>Sistema de Implantações - Comissões</p>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+    }
+
     // ==================== EXPORTAÇÃO EXCEL ====================
     function exportarExcel() {
         const dados = getDadosFiltradosLancamentos();
@@ -635,12 +792,19 @@
             { 'RESUMO DRE': '5. RESULTADO LÍQUIDO FINAL', 'VALOR (R$)': totalLiquido }
         ];
         
+        // Adicionar comissão por consultor
+        const comissaoPorConsultor = {};
+        dados.forEach(i => { comissaoPorConsultor[i.consultor] = (comissaoPorConsultor[i.consultor]||0) + calcularComissao(i.valor,i.tipo); });
+        const resumoConsultores = Object.entries(comissaoPorConsultor).map(([nome, valor]) => ({ 'CONSULTOR': nome, 'COMISSÃO (R$)': valor }));
+        
         const wsDados = XLSX.utils.json_to_sheet(planilhaDados);
         const wsResumo = XLSX.utils.json_to_sheet(resumoDRE);
+        const wsConsultores = XLSX.utils.json_to_sheet(resumoConsultores);
         
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, wsDados, 'Lançamentos');
         XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo DRE');
+        XLSX.utils.book_append_sheet(wb, wsConsultores, 'Comissão por Consultor');
         
         const nomeArquivo = `implantacoes_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.xlsx`;
         XLSX.writeFile(wb, nomeArquivo);
@@ -666,32 +830,41 @@
             upsell_presencial: dados.filter(i=>i.tipo==="upsell_presencial").length
         };
         
+        // Calcular comissão por consultor
+        const comissaoPorConsultor = {};
+        dados.forEach(i => { comissaoPorConsultor[i.consultor] = (comissaoPorConsultor[i.consultor]||0) + calcularComissao(i.valor,i.tipo); });
+        
+        let tabelaComissaoHtml = '<table style="width:100%; border-collapse: collapse; margin-top: 10px; font-size: 10px;">';
+        tabelaComissaoHtml += '<thead><tr style="background: #1e90ff; color: white;"><th style="padding: 6px; border: 1px solid #ddd;">Consultor</th><th style="padding: 6px; border: 1px solid #ddd;">Comissão (R$)</th></tr></thead><tbody>';
+        for (const [consultor, valor] of Object.entries(comissaoPorConsultor)) {
+            tabelaComissaoHtml += `<tr><td style="padding: 4px; border: 1px solid #ddd;">${consultor}</td><td style="padding: 4px; border: 1px solid #ddd;">R$ ${valor.toFixed(2)}</td></tr>`;
+        }
+        tabelaComissaoHtml += '</tbody></table>';
+        
         // Montar tabela HTML
-        let tabelaHtml = '<table style="width:100%; border-collapse: collapse; font-size: 10px;">';
+        let tabelaHtml = '<table style="width:100%; border-collapse: collapse; font-size: 9px;">';
         tabelaHtml += '<thead><tr style="background: #1e90ff; color: white;">';
-        tabelaHtml += '<th style="padding: 6px; border: 1px solid #ddd;">Consultor</th>';
-        tabelaHtml += '<th style="padding: 6px; border: 1px solid #ddd;">Cliente</th>';
-        tabelaHtml += '<th style="padding: 6px; border: 1px solid #ddd;">Valor</th>';
-        tabelaHtml += '<th style="padding: 6px; border: 1px solid #ddd;">Tipo</th>';
-        tabelaHtml += '<th style="padding: 6px; border: 1px solid #ddd;">Comissão</th>';
-        tabelaHtml += '<th style="padding: 6px; border: 1px solid #ddd;">Qualificado</th>';
-        tabelaHtml += '<th style="padding: 6px; border: 1px solid #ddd;">Status</th>';
+        tabelaHtml += '<th style="padding: 5px; border: 1px solid #ddd;">Consultor</th>';
+        tabelaHtml += '<th style="padding: 5px; border: 1px solid #ddd;">Cliente</th>';
+        tabelaHtml += '<th style="padding: 5px; border: 1px solid #ddd;">Valor</th>';
+        tabelaHtml += '<th style="padding: 5px; border: 1px solid #ddd;">Comissão</th>';
+        tabelaHtml += '<th style="padding: 5px; border: 1px solid #ddd;">Qualificado</th>';
+        tabelaHtml += '<th style="padding: 5px; border: 1px solid #ddd;">Status</th>';
         tabelaHtml += '</tr></thead><tbody>';
         
-        dados.slice(0, 20).forEach(item => {
+        dados.slice(0, 15).forEach(item => {
             tabelaHtml += `<tr>`;
             tabelaHtml += `<td style="padding: 4px; border: 1px solid #ddd;">${item.consultor}</td>`;
             tabelaHtml += `<td style="padding: 4px; border: 1px solid #ddd;">${item.cliente}</td>`;
             tabelaHtml += `<td style="padding: 4px; border: 1px solid #ddd;">R$ ${item.valor.toFixed(2)}</td>`;
-            tabelaHtml += `<td style="padding: 4px; border: 1px solid #ddd;">${item.tipo === 'implantacao_online' ? '🌐 Online' : item.tipo === 'implantacao_presencial' ? '🏢 Presencial' : item.tipo === 'upsell_online' ? '⬆️ Upsell' : '🏢⬆️ Upsell Pres'}</td>`;
             tabelaHtml += `<td style="padding: 4px; border: 1px solid #ddd;">R$ ${calcularComissao(item.valor, item.tipo).toFixed(2)}</td>`;
             tabelaHtml += `<td style="padding: 4px; border: 1px solid #ddd;">${item.qualificado === 'Sim' ? '✅ Sim' : '❌ Não'}</td>`;
             tabelaHtml += `<td style="padding: 4px; border: 1px solid #ddd;">${item.pago === 'Sim' ? '💰 Pago' : item.pago === 'Pendente' ? '⏰ Pendente' : '❌ Não'}</td>`;
             tabelaHtml += `</tr>`;
         });
         
-        if(dados.length > 20) {
-            tabelaHtml += `<tr><td colspan="7" style="text-align: center; padding: 8px;"><strong>... e mais ${dados.length - 20} registros. Exporte o Excel para visualizar todos.</strong></td></tr>`;
+        if(dados.length > 15) {
+            tabelaHtml += `<tr><td colspan="6" style="text-align: center; padding: 6px;"><strong>... e mais ${dados.length - 15} registros. Exporte o Excel para visualizar todos.</strong></td></tr>`;
         }
         
         tabelaHtml += '</tbody></table>';
@@ -707,41 +880,40 @@
                     * { margin: 0; padding: 0; box-sizing: border-box; }
                     body {
                         font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
-                        padding: 30px;
+                        padding: 20px;
                         background: white;
                     }
                     .dre-header {
                         text-align: center;
-                        margin-bottom: 25px;
-                        padding-bottom: 15px;
+                        margin-bottom: 20px;
+                        padding-bottom: 12px;
                         border-bottom: 2px solid #1e90ff;
                     }
-                    .dre-header h1 { color: #1e6ab3; font-size: 24px; margin-bottom: 5px; }
-                    .dre-header p { color: #718096; font-size: 12px; margin: 3px 0; }
-                    .dre-section { margin-bottom: 25px; }
-                    .dre-section h3 { color: #1e6ab3; font-size: 16px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0; }
-                    .dre-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f0f4fa; }
-                    .dre-row.total { font-weight: 700; margin-top: 10px; padding-top: 10px; border-top: 2px solid #1e90ff; border-bottom: none; }
-                    .dre-row.total .dre-value { color: #1e6ab3; font-size: 18px; }
-                    .dre-label { flex: 1; font-size: 13px; }
-                    .dre-value { font-weight: 500; text-align: right; font-size: 13px; }
-                    .dre-indent { margin-left: 25px; }
-                    .dre-footer { margin-top: 25px; padding-top: 12px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 10px; color: #a0aec0; }
+                    .dre-header h1 { color: #1e6ab3; font-size: 20px; margin-bottom: 5px; }
+                    .dre-header p { color: #718096; font-size: 11px; margin: 3px 0; }
+                    .dre-section { margin-bottom: 20px; }
+                    .dre-section h3 { color: #1e6ab3; font-size: 14px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #e2e8f0; }
+                    .dre-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #f0f4fa; }
+                    .dre-row.total { font-weight: 700; margin-top: 8px; padding-top: 8px; border-top: 2px solid #1e90ff; border-bottom: none; }
+                    .dre-row.total .dre-value { color: #1e6ab3; font-size: 16px; }
+                    .dre-label { flex: 1; font-size: 12px; }
+                    .dre-value { font-weight: 500; text-align: right; font-size: 12px; }
+                    .dre-footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 9px; color: #a0aec0; }
                     table {
                         width: 100%;
                         border-collapse: collapse;
-                        margin-top: 15px;
-                        font-size: 11px;
+                        margin-top: 10px;
+                        font-size: 10px;
                     }
                     th {
                         background: #1e90ff;
                         color: white;
-                        padding: 8px;
+                        padding: 6px;
                         border: 1px solid #ddd;
                         text-align: left;
                     }
                     td {
-                        padding: 6px;
+                        padding: 4px;
                         border: 1px solid #ddd;
                     }
                 </style>
@@ -764,9 +936,9 @@
                 <div class="dre-section">
                     <h3>💰 DEMONSTRATIVO DE RESULTADOS</h3>
                     <div class="dre-row"><span class="dre-label">1. RECEITA BRUTA TOTAL</span><span class="dre-value">R$ ${totalVendas.toFixed(2)}</span></div>
-                    <div class="dre-row dre-indent"><span class="dre-label">(-) Impostos (16%)</span><span class="dre-value">R$ ${totalImposto.toFixed(2)}</span></div>
+                    <div class="dre-row dre-indent" style="margin-left: 20px;"><span class="dre-label">(-) Impostos (16%)</span><span class="dre-value">R$ ${totalImposto.toFixed(2)}</span></div>
                     <div class="dre-row"><span class="dre-label">2. RECEITA LÍQUIDA</span><span class="dre-value">R$ ${(totalVendas - totalImposto).toFixed(2)}</span></div>
-                    <div class="dre-row dre-indent"><span class="dre-label">(-) Comissões Pagas</span><span class="dre-value">R$ ${totalComissao.toFixed(2)}</span></div>
+                    <div class="dre-row dre-indent" style="margin-left: 20px;"><span class="dre-label">(-) Comissões Pagas</span><span class="dre-value">R$ ${totalComissao.toFixed(2)}</span></div>
                     <div class="dre-row total"><span class="dre-label">3. RESULTADO LÍQUIDO FINAL</span><span class="dre-value">R$ ${totalLiquido.toFixed(2)}</span></div>
                 </div>
                 
@@ -779,7 +951,12 @@
                 </div>
                 
                 <div class="dre-section">
-                    <h3>📋 LISTA DE LANÇAMENTOS</h3>
+                    <h3>👥 COMISSÕES POR CONSULTOR</h3>
+                    ${tabelaComissaoHtml}
+                </div>
+                
+                <div class="dre-section">
+                    <h3>📋 LISTA DE LANÇAMENTOS (Últimos 15)</h3>
                     ${tabelaHtml}
                 </div>
                 
@@ -791,12 +968,11 @@
             </html>
         `;
         
-        // Abrir janela popup com o relatório e imprimir/gerar PDF
+        // Abrir janela popup com o relatório
         const win = window.open('', '_blank');
         win.document.write(relatorioHtml);
         win.document.close();
         
-        // Aguardar carregamento e chamar print
         win.onload = function() {
             setTimeout(() => {
                 win.print();
@@ -823,6 +999,7 @@
             document.getElementById('filtroConsultorGroup').style.display = isGestor ? 'flex' : 'none';
             document.getElementById('filtroConsultorGroupDash').style.display = isGestor ? 'flex' : 'none';
             document.getElementById('btnTestConexao').style.display = isGestor ? 'flex' : 'none';
+            document.getElementById('btnRelatorio').style.display = isGestor ? 'flex' : 'none';
             
             document.getElementById('filtroConsultor').addEventListener('change', () => aplicarFiltrosLancamentos());
             document.getElementById('filtroDataInicio').addEventListener('change', () => aplicarFiltrosLancamentos());
@@ -870,6 +1047,7 @@
         document.getElementById('filtroConsultorGroup').style.display = isGestor ? 'flex' : 'none';
         document.getElementById('filtroConsultorGroupDash').style.display = isGestor ? 'flex' : 'none';
         document.getElementById('btnTestConexao').style.display = isGestor ? 'flex' : 'none';
+        document.getElementById('btnRelatorio').style.display = isGestor ? 'flex' : 'none';
         
         document.getElementById('filtroConsultor').addEventListener('change', () => aplicarFiltrosLancamentos());
         document.getElementById('filtroDataInicio').addEventListener('change', () => aplicarFiltrosLancamentos());
